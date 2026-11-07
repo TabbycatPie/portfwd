@@ -40,7 +40,7 @@ var (
 		GetSaveFileNameW    *syscall.LazyProc
 	}{}
 	kproc = struct {
-		CreateMutexW, GetLastError, GetCurrentThreadId *syscall.LazyProc
+		CreateMutexW, GetLastError, GetCurrentThreadId, GetUserDefaultUILanguage *syscall.LazyProc
 	}{}
 )
 
@@ -125,6 +125,7 @@ func init() {
 	kproc.CreateMutexW = k32.NewProc("CreateMutexW")
 	kproc.GetLastError = k32.NewProc("GetLastError")
 	kproc.GetCurrentThreadId = k32.NewProc("GetCurrentThreadId")
+	kproc.GetUserDefaultUILanguage = k32.NewProc("GetUserDefaultUILanguage")
 }
 
 const (
