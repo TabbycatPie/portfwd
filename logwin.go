@@ -41,8 +41,8 @@ func openLog() {
 		logClsReg = true
 	}
 	hwndLog, _, _ = proc.CreateWindowExW.Call(
-		0x00040000, uintptr(unsafe.Pointer(utf16ptr("PortFwdLog"))), uintptr(unsafe.Pointer(utf16ptr("连接记录"))),
-		0x80000000, 320, 200, 900, 600,
+		0x00040000, uintptr(unsafe.Pointer(utf16ptr("PortFwdLog"))), uintptr(unsafe.Pointer(utf16ptr(T("log.title")))),
+		0x80000000, uintptr(iscale(320)), uintptr(iscale(200)), uintptr(iscale(900)), uintptr(iscale(600)),
 		hwndMain, 0, hInst, 0)
 	roundCorners(hwndLog)
 	roundRegion(hwndLog, 14)
@@ -150,7 +150,7 @@ func paintLog(hdc uintptr, prc RECT) {
 	hitSink = &hitsLog
 
 	// 标题栏
-	g.text("连接记录", RECT{28, 2, rc.Right - 80, 50}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
+	g.text(T("log.title"), RECT{28, 2, rc.Right - 80, 50}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	closeR := RECT{rc.Right - 58, 11, rc.Right - 18, 43}
 	if t := animOf(idLogClose); t > 0 {
 		g.round(closeR, 8, lerpColor(cBg, cBtnHov, t))
@@ -164,12 +164,12 @@ func paintLog(hdc uintptr, prc RECT) {
 		x, w int32
 		t    string
 	}{
-		{28, 90, "时间"},
-		{120, 200, "规则"},
-		{326, 160, "来源"},
-		{492, 190, "目标"},
-		{688, 100, "流量"},
-		{794, 80, "状态"},
+		{28, 90, T("log.col.time")},
+		{120, 200, T("log.col.rule")},
+		{326, 160, T("log.col.src")},
+		{492, 190, T("log.col.dst")},
+		{688, 100, T("log.col.bytes")},
+		{794, 80, T("log.col.state")},
 	}
 	for _, c := range cols {
 		g.text(c.t, RECT{c.x, hy, c.x + c.w, hy + 26}, cSub, fSmall, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
@@ -189,7 +189,7 @@ func paintLog(hdc uintptr, prc RECT) {
 	}
 
 	if len(evs) == 0 {
-		g.text("还没有连接记录。有人访问你转发的端口时会出现在这里。",
+		g.text(T("log.empty"),
 			RECT{28, 120, rc.Right - 28, 160}, cSub, fBody, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	}
 
@@ -209,11 +209,11 @@ func paintLog(hdc uintptr, prc RECT) {
 		state, color := "", cSub
 		switch {
 		case e.Err != "":
-			state, color = "失败", cDanger
+			state, color = T("log.st.failed"), cDanger
 		case e.Open:
-			state, color = "传输中", cRun
+			state, color = T("log.st.open"), cRun
 		default:
-			state, color = "完成 · "+shortDur(e.Dur), cSub
+			state, color = T("log.st.done", shortDur(e.Dur)), cSub
 		}
 		g.text(humanBytes(e.Bytes), RECT{688, r.Top, 788, r.Top + 40}, cSub, fNum, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 		g.text(state, RECT{794, r.Top, rc.Right - 24, r.Top + 40}, color, fNum, DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS)
@@ -223,11 +223,11 @@ func paintLog(hdc uintptr, prc RECT) {
 	// 底部
 	fy := rc.Bottom - 52
 	g.fill(RECT{0, fy - 12, rc.Right, fy - 11}, cLine)
-	g.text(fmt.Sprintf("共 %d 条（滚动查看，最多保留 %d 条）", len(evs), maxEvents),
+	g.text(T("log.footer", len(evs), maxEvents),
 		RECT{28, fy - 4, rc.Right - 200, fy + 30}, cSub, fSmall, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
 	br := RECT{rc.Right - 28 - 88, fy - 6, rc.Right - 28, fy + 32}
-	btn(g, br, "清空", idLogClear, cBtn, cDanger)
+	btn(g, br, T("log.clear"), idLogClear, cBtn, cDanger)
 
 	blitGfxDC(hdc, prc, mdc, bmp, old)
 }
