@@ -19,7 +19,7 @@ const (
 var (
 	logMu   sync.Mutex
 	logFile string
-	appVer  = "1.0.6"
+	appVer  = "1.0.7"
 )
 
 func initLog() {
