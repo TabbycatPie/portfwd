@@ -32,6 +32,7 @@ var (
 	pGetDC                  = u32b.NewProc("GetDC")
 	pDwmSetAttr             = syscall.NewLazyDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
 	pReleaseCapture         = u32b.NewProc("ReleaseCapture")
+	pShellExecute           = syscall.NewLazyDLL("shell32.dll").NewProc("ShellExecuteW")
 	pCreateRoundRectRgn     = g32b.NewProc("CreateRoundRectRgn")
 	pSetWindowRgn           = u32b.NewProc("SetWindowRgn")
 	_                       = pGetDC
@@ -79,6 +80,7 @@ const (
 	trayStartAll
 	trayStopAll
 	trayExit
+	trayOpenLog
 )
 
 var (
@@ -201,6 +203,8 @@ func main() {
 		}
 	}
 
+	initLog()
+
 	mx := utf16ptr("PortFwdTrayMutex.v1")
 	_, _, e := kproc.CreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(mx)))
 	if errno, ok := e.(syscall.Errno); ok && errno == 183 {
@@ -209,6 +213,10 @@ func main() {
 
 	hInst, _, _ = proc.GetModuleHandleW.Call(0)
 	cfg = loadConfig()
+	logf("config loaded: %d rules from %s", len(cfg.Items), configPath())
+	for _, it := range cfg.Items {
+		logf("  rule %q local=:%d -> %s:%d enabled=%v", it.Name, it.LocalPort, it.TargetHost, it.TargetPort, it.Enabled)
+	}
 
 	fTitle = newFont(22, true)
 	fH1 = newFont(18, true)
@@ -301,7 +309,8 @@ func addTray() {
 	nid.UCallbackMessage = trayMsg
 	nid.HIcon = hIconTray
 	copy(nid.SzTip[:], syscall.StringToUTF16("端口转发"))
-	gproc.ShellNotifyIcon.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
+	r, _, _ := gproc.ShellNotifyIcon.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
+	logf("tray NIM_ADD ok=%d cbSize=%d", r, nid.CbSize)
 }
 
 func delTray() {
@@ -338,10 +347,55 @@ func darkTitle(hwnd uintptr) {
 	pDwmSetAttr.Call(hwnd, 20, uintptr(unsafe.Pointer(&on)), 4) // DWMWA_USE_IMMERSIVE_DARK_MODE
 }
 
+func showTrayMenu() {
+	hm, _, _ := proc.CreatePopupMenu.Call()
+	proc.AppendMenuW.Call(hm, MF_STRING, trayOpen, uintptr(unsafe.Pointer(utf16ptr("打开面板"))))
+	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
+	proc.AppendMenuW.Call(hm, MF_STRING, trayStartAll, uintptr(unsafe.Pointer(utf16ptr("全部启动"))))
+	proc.AppendMenuW.Call(hm, MF_STRING, trayStopAll, uintptr(unsafe.Pointer(utf16ptr("全部停止"))))
+	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
+	proc.AppendMenuW.Call(hm, MF_STRING, trayOpenLog, uintptr(unsafe.Pointer(utf16ptr("打开日志"))))
+	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
+	proc.AppendMenuW.Call(hm, MF_STRING, trayExit, uintptr(unsafe.Pointer(utf16ptr("退出"))))
+
+	var pt POINT
+	proc.GetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	proc.SetForegroundWindow.Call(hwndMain)
+	cmd, _, _ := proc.TrackPopupMenu.Call(hm, TPM_RIGHTBUTTON|TPM_RETURNCMD,
+		uintptr(pt.X), uintptr(pt.Y), 0, hwndMain, 0)
+	proc.PostMessageW.Call(hwndMain, WM_NULL, 0, 0)
+	proc.DestroyMenu.Call(hm)
+
+	switch int(cmd) {
+	case trayOpen:
+		showMain()
+	case trayStartAll:
+		startAll()
+	case trayStopAll:
+		stopAll()
+	case trayOpenLog:
+		pShellExecute.Call(0,
+			uintptr(unsafe.Pointer(utf16ptr("open"))),
+			uintptr(unsafe.Pointer(utf16ptr(logPathFor()))),
+			0, 0, 1)
+	case trayExit:
+		logf("quit by user")
+		delTray()
+		proc.DestroyWindow.Call(hwndMain)
+	}
+}
+
 func showMain() {
-	proc.ShowWindow.Call(hwndMain, SW_RESTORE)
+	vis, _, _ := proc.IsWindowVisible.Call(hwndMain)
+	if vis == 0 {
+		proc.ShowWindow.Call(hwndMain, SW_SHOW)
+	} else {
+		proc.ShowWindow.Call(hwndMain, SW_RESTORE)
+	}
+	roundRegion(hwndMain, 14)
 	proc.SetForegroundWindow.Call(hwndMain)
 	proc.InvalidateRect.Call(hwndMain, 0, 1)
+	logf("panel shown")
 }
 
 func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
@@ -386,6 +440,7 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		return 0
 	case WM_CLOSE:
 		proc.ShowWindow.Call(hwnd, SW_HIDE)
+		logf("panel hidden to tray")
 		return 0
 	case WM_DESTROY:
 		eng.StopAll(cfg.Items)
@@ -394,9 +449,12 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		return 0
 	}
 	if trayMsg != 0 && msg == uintptr(trayMsg) {
+		logf("tray event lp=%#x", lp)
 		switch uint32(lp) {
-		case WM_RBUTTONUP, WM_LBUTTONDBLCLK:
+		case WM_LBUTTONUP, WM_LBUTTONDBLCLK:
 			showMain()
+		case WM_RBUTTONUP:
+			showTrayMenu()
 		}
 		return 0
 	}
