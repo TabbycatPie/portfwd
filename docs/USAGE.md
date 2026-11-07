@@ -169,6 +169,7 @@ Stop all
 ──────
 Open log
 UI scale ▸  90% / 100% / 115% / 130% / 150%
+Language ▸  Follow system / 中文 / English
 Install as service  (shows "Uninstall service" once installed)
 ──────
 Quit
@@ -264,7 +265,32 @@ PortFwd.exe --uninstall    # stop + delete (admin)
 > In service mode there is **no tray icon** (the service runs in session 0), so start the panel
 > from a shortcut when you want to edit rules.
 
+## 7e. UI language (中文 / English)
+
+Tray right-click → **Language / 语言**:
+
+| Choice | Behaviour |
+|---|---|
+| Follow system | Default. Chinese UI language (Simplified or Traditional) → Chinese, anything else → English |
+| 中文 | Force Chinese |
+| English | Force English |
+
+The choice is stored as `lang` in the config file and **applies on the next start** (it also applies immediately —
+panel, connection log, dialogs and the tray menu all switch together).
+
+```json
+{
+  "items": [ ... ],
+  "lang": "en"
+}
+```
+
+Remove the `lang` key (or pick *Follow system*) to go back to the system language.
+
+> Rule names and target addresses are your own data and are never translated.
+
 ## 8. Command line
+
 
 
 | Flag | Purpose |
