@@ -128,8 +128,10 @@ func (e *Engine) Start(it Item) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		e.state[it.ID] = &fwdState{err: err.Error()}
+		logf("[fwd] start FAIL rule=%q listen %s err=%v", it.Name, addr, err)
 		return err
 	}
+	logf("[fwd] start ok rule=%q listen %s -> %s:%d", it.Name, addr, it.TargetHost, it.TargetPort)
 	st := &fwdState{ln: ln}
 	e.state[it.ID] = st
 	go e.acceptLoop(it, st)
@@ -180,6 +182,7 @@ func (e *Engine) acceptLoop(it Item, st *fwdState) {
 			defer src.Close()
 			client := src.RemoteAddr().String()
 			ev := recordOpen(rule, client, target)
+			logf("[conn] open rule=%q from=%s to=%s", rule, client, target)
 
 			var total int64
 			dst, derr := net.DialTimeout("tcp", target, 6*time.Second)
@@ -188,6 +191,7 @@ func (e *Engine) acceptLoop(it Item, st *fwdState) {
 				st.err = "目标不可达: " + derr.Error()
 				e.mu.Unlock()
 				recordClose(ev, 0, derr)
+				logf("[conn] dial FAIL from=%s to=%s err=%v", client, target, derr)
 				return
 			}
 			defer dst.Close()
@@ -198,7 +202,9 @@ func (e *Engine) acceptLoop(it Item, st *fwdState) {
 			go func() { _, _ = io.Copy(cd, cs); done <- struct{}{} }()
 			go func() { _, _ = io.Copy(cs, cd); done <- struct{}{} }()
 			<-done
-			recordClose(ev, atomic.LoadInt64(&total), nil)
+			n := atomic.LoadInt64(&total)
+			recordClose(ev, n, nil)
+			logf("[conn] close from=%s to=%s bytes=%d dur=%s", client, target, n, time.Since(ev.At).Round(time.Millisecond))
 		}(c)
 	}
 }
@@ -211,6 +217,7 @@ func (e *Engine) Stop(id string) {
 		st.ln = nil
 		st.err = ""
 		e.mu.Unlock()
+		logf("[fwd] stop id=%s", id)
 		if ln != nil {
 			_ = ln.Close()
 		}
