@@ -26,7 +26,14 @@ Typical use cases:
 | List | One card per rule: name, `target:port → local port`, status dot, `Start/Stop` `Edit` `Delete` |
 | Footer | Totals, plus the reason of the last failure |
 
-Status dot: green `running`, grey `stopped`, red `failed` (the reason appears in the footer).
+Status dot: green `running`, grey `stopped`, red `failed` (the reason appears in the footer);
+when the service takes over, rules read `service-managed`.
+
+Interaction details:
+
+- Hovering a button, a card, or the title-bar `—` `×` fades the background in over ~150 ms and fades out on leave.
+- Mouse wheel scrolls the list when there are more rules than fit.
+- If `Start` fails (port already taken, etc.) you get a dialog with the actual error instead of silence.
 
 ---
 
@@ -160,10 +167,14 @@ Open panel
 Start all
 Stop all
 ──────
+Open log
+UI scale ▸  90% / 100% / 115% / 130% / 150%
+Install as service  (shows "Uninstall service" once installed)
+──────
 Quit
 ```
 
-- **Double-click** the icon to open the panel.
+- **Click or double-click** the icon to open the panel (it is forced to the foreground too).
 - **`×` / close** hides the panel; forwarding keeps running.
 - **Quit** stops all forwards and terminates the process.
 
@@ -225,11 +236,43 @@ DPI. It is persisted as `ui_scale` in the config file:
 }
 ```
 
+## 7d. Running as a Windows service (optional)
+
+By default PortFwd is a per-user tray process: it starts at logon and stops when you quit.
+To keep forwarding **without any logged-in session**, install it as a service.
+
+Tray right-click → **安装为后台服务** (needs admin, UAC prompt). Afterwards:
+
+| What | Detail |
+|---|---|
+| Service | `PortFwd`, start type Automatic, visible in `services.msc` |
+| Who forwards | The service (LocalSystem), so closing the panel changes nothing |
+| Panel role | Edit-only; the status column reads `服务托管` (service-managed). Saving a rule makes the service reload within ~2 s |
+| Config | Moves to `%ProgramData%\PortFwd\config.json` (migrated automatically on first install) |
+| Log | `%ProgramData%\PortFwd\portfwd.log` |
+
+Remove it with tray right-click → **卸载后台服务**, or `PortFwd.exe --uninstall` as admin.
+You go back to tray-process mode; the config stays in `ProgramData` (copy it back to `%APPDATA%` if you want).
+
+CLI equivalents:
+
+```
+PortFwd.exe --install      # register + start (admin)
+PortFwd.exe --uninstall    # stop + delete (admin)
+```
+
+> In service mode there is **no tray icon** (the service runs in session 0), so start the panel
+> from a shortcut when you want to edit rules.
+
 ## 8. Command line
+
 
 | Flag | Purpose |
 |---|---|
 | `--tray` / `--startup` | Start hidden in the tray |
+| `--service` | Called by the service control manager (do not run manually) |
+| `--install` | Register + start as an auto-start service (admin) |
+| `--uninstall` | Stop + delete the service (admin) |
 | `--check` | Headless: start all rules, write the result to `%TEMP%\portfwd-check.txt`, exit |
 | `--dump` | Dump the current config to `%TEMP%\portfwd-dump.json` |
 | `--selftest` | Start a throwaway forward, make one real connection, dump the event |
