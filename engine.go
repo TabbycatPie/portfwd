@@ -188,7 +188,7 @@ func (e *Engine) acceptLoop(it Item, st *fwdState) {
 			dst, derr := net.DialTimeout("tcp", target, 6*time.Second)
 			if derr != nil {
 				e.mu.Lock()
-				st.err = "目标不可达: " + derr.Error()
+				st.err = T("err.unreachable") + derr.Error()
 				e.mu.Unlock()
 				recordClose(ev, 0, derr)
 				logf("[conn] dial FAIL from=%s to=%s err=%v", client, target, derr)
