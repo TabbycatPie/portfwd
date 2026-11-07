@@ -577,10 +577,19 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		onClick(lx, ly)
 		return 0
 	case WM_MOUSEMOVE:
+		trackMouseLeave(hwnd)
 		lx, ly := toLogical(loword(lp), hiword(lp))
 		id := hitTest(hitsMain, lx, ly)
 		if id != hoverID {
 			hoverID = id
+			startHoverAnim(hwndMain)
+			proc.InvalidateRect.Call(hwnd, 0, 0)
+		}
+		return 0
+	case WM_MOUSELEAVE:
+		if hoverID != 0 {
+			hoverID = 0
+			startHoverAnim(hwndMain)
 			proc.InvalidateRect.Call(hwnd, 0, 0)
 		}
 		return 0
@@ -608,6 +617,19 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		proc.InvalidateRect.Call(hwnd, 0, 1)
 		return 0
 	case WM_TIMER:
+		if wp == 2 {
+			if !animTick() {
+				proc.KillTimer.Call(hwnd, 2)
+			}
+			proc.InvalidateRect.Call(hwnd, 0, 1)
+			if hwndLog != 0 {
+				proc.InvalidateRect.Call(hwndLog, 0, 0)
+			}
+			if hwndDlg != 0 {
+				proc.InvalidateRect.Call(hwndDlg, 0, 0)
+			}
+			return 0
+		}
 		proc.InvalidateRect.Call(hwnd, 0, 0)
 		if hwndLog != 0 {
 			proc.InvalidateRect.Call(hwndLog, 0, 0)
@@ -673,10 +695,11 @@ func paintMain(hdc uintptr, prc RECT) {
 	g.text("端口转发", RECT{pad, 2, rc.Right - 200, titleH - 6}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	closeR := RECT{rc.Right - 62, 12, rc.Right - 18, 48}
 	minR := RECT{rc.Right - 116, 12, rc.Right - 72, 48}
-	if hoverID == idClose {
-		g.round(closeR, 8, 0x00322B3B)
-	} else if hoverID == idMin {
-		g.round(minR, 8, cBtnHov)
+	if t := animOf(idClose); t > 0 {
+		g.round(closeR, 8, lerpColor(cBg, 0x00322B3B, t))
+	}
+	if t := animOf(idMin); t > 0 {
+		g.round(minR, 8, lerpColor(cBg, cBtnHov, t))
 	}
 	g.text("×", closeR, cText, fTitle, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	g.text("—", minR, cSub, fBtn, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
@@ -724,10 +747,7 @@ func paintMain(hdc uintptr, prc RECT) {
 		it := items[scrollTop+i]
 		r := RECT{pad, top + int32(i)*pitch, rc.Right - pad, top + int32(i)*pitch + rowH}
 		running := eng.Running(it.ID)
-		cardBg := cCard
-		if hoverID == baseCard+scrollTop+i {
-			cardBg = cCardHov
-		}
+		cardBg := hoverBg(baseCard+scrollTop+i, cCard, cCardHov)
 		g.round(r, 14, cardBg)
 		hitsMain = append(hitsMain, hitBox{id: baseCard + scrollTop + i, rect: r})
 
@@ -804,9 +824,7 @@ func paintMain(hdc uintptr, prc RECT) {
 }
 
 func btn(g gfx, r RECT, label string, id int, bg, fg uint32) {
-	if hoverID == id {
-		bg = cBtnHov
-	}
+	bg = hoverBg(id, bg, hoverTint(bg))
 	g.round(r, 8, bg)
 	g.text(label, r, fg, fBtn, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	if hitSink != nil {
@@ -1079,10 +1097,12 @@ func wndDlgProc(hwnd, msg, wp, lp uintptr) uintptr {
 		dlgClick(lx, ly)
 		return 0
 	case WM_MOUSEMOVE:
+		trackMouseLeave(hwnd)
 		lx, ly := toLogical(loword(lp), hiword(lp))
 		id := hitTest(hitsDlg, lx, ly)
 		if id != hoverID {
 			hoverID = id
+			startHoverAnim(hwndMain)
 			proc.InvalidateRect.Call(hwnd, 0, 0)
 		}
 		return 0
@@ -1147,8 +1167,8 @@ func paintDlg(hdc uintptr, prc RECT) {
 	}
 	g.text(title, RECT{30, 2, rc.Right - 80, 56}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	closeR := RECT{rc.Right - 58, 12, rc.Right - 18, 48}
-	if hoverID == idDlgClose {
-		g.round(closeR, 8, cBtnHov)
+	if t := animOf(idDlgClose); t > 0 {
+		g.round(closeR, 8, lerpColor(cBg, cBtnHov, t))
 	}
 	g.text("×", closeR, cText, fTitle, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	hitsDlg = append(hitsDlg, hitBox{id: idDlgClose, rect: closeR})
