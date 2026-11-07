@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 )
 
 type Item struct {
@@ -19,16 +20,41 @@ type Item struct {
 
 type Config struct {
 	Items []Item `json:"items"`
+	// UIScale 界面缩放（1.0 = 100%），叠加在系统 DPI 之上
+	UIScale float64 `json:"ui_scale,omitempty"`
 }
 
+var (
+	cfgPathOnce sync.Once
+	cfgPathVal  string
+)
+
+// 配置路径：装了服务就用 %ProgramData%\PortFwd\config.json（服务和面板共用一份），
+// 否则用当前用户的 %APPDATA%\PortFwd\config.json。
 func configPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil || dir == "" {
-		dir = os.Getenv("APPDATA")
-	}
-	d := filepath.Join(dir, "PortFwd")
-	_ = os.MkdirAll(d, 0755)
-	return filepath.Join(d, "config.json")
+	cfgPathOnce.Do(func() {
+		dir, err := os.UserConfigDir()
+		if err != nil || dir == "" {
+			dir = os.Getenv("APPDATA")
+		}
+		userPath := filepath.Join(dir, "PortFwd", "config.json")
+		if serviceInstalled() {
+			pd := filepath.Join(os.Getenv("ProgramData"), "PortFwd")
+			_ = os.MkdirAll(pd, 0755)
+			svcPath := filepath.Join(pd, "config.json")
+			if _, err := os.Stat(svcPath); err != nil {
+				// 首次切到服务模式：把用户侧配置迁过去
+				if b, e := os.ReadFile(userPath); e == nil {
+					_ = os.WriteFile(svcPath, b, 0644)
+				}
+			}
+			cfgPathVal = svcPath
+			return
+		}
+		_ = os.MkdirAll(filepath.Dir(userPath), 0755)
+		cfgPathVal = userPath
+	})
+	return cfgPathVal
 }
 
 // stripBOM 去掉 UTF-8 BOM：记事本另存为「UTF-8」会带 BOM，直接 Unmarshal 会失败
