@@ -253,12 +253,12 @@ func main() {
 		logf("  rule %q local=:%d -> %s:%d enabled=%v", it.Name, it.LocalPort, it.TargetHost, it.TargetPort, it.Enabled)
 	}
 
-	fTitle = newFont(22, true)
-	fH1 = newFont(18, true)
-	fBody = newFont(16, false)
-	fSmall = newFont(15, false)
-	fBtn = newFont(15, false)
-	fNum = newFont(15, false)
+	fTitle = newFont(25, true)
+	fH1 = newFont(21, true)
+	fBody = newFont(18, false)
+	fSmall = newFont(17, false)
+	fBtn = newFont(17, false)
+	fNum = newFont(17, false)
 
 	imgs := parseICO(icoData)
 	hIconTray = makeIcon(imgs, 32)
@@ -278,7 +278,7 @@ func main() {
 
 	scrW, _, _ := proc.GetSystemMetrics.Call(0)
 	scrH, _, _ := proc.GetSystemMetrics.Call(1)
-	w, h := int32(900), int32(700)
+	w, h := int32(980), int32(780)
 	x := (int32(scrW) - w) / 2
 	y := (int32(scrH) - h) / 2
 
@@ -568,7 +568,7 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 // ---------- 绘制 ----------
 
 func visibleRows(h int32) int32 {
-	n := (h - 132 - 64) / 90
+	n := (h - 142 - 70) / 100
 	if n < 1 {
 		n = 1
 	}
@@ -591,12 +591,12 @@ func paintMain(hdc uintptr, rc RECT) {
 	hitSink = &hitsMain
 
 	pad := int32(28)
-	const titleH = int32(54)
+	const titleH = int32(60)
 
 	// —— 自绘标题栏 ——
-	g.text("端口转发", RECT{pad, 2, rc.Right - 160, titleH - 8}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
-	closeR := RECT{rc.Right - 58, 11, rc.Right - 18, 43}
-	minR := RECT{rc.Right - 106, 11, rc.Right - 66, 43}
+	g.text("端口转发", RECT{pad, 2, rc.Right - 200, titleH - 6}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
+	closeR := RECT{rc.Right - 62, 12, rc.Right - 18, 48}
+	minR := RECT{rc.Right - 116, 12, rc.Right - 72, 48}
 	if hoverID == idClose {
 		g.round(closeR, 8, 0x00322B3B)
 	} else if hoverID == idMin {
@@ -608,11 +608,11 @@ func paintMain(hdc uintptr, rc RECT) {
 
 	// —— 工具行 ——
 	g.text("本地端口 → 目标服务 · 右键托盘图标可再次打开",
-		RECT{pad, titleH - 4, rc.Right - 470, titleH + 32}, cSub, fSmall, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
+		RECT{pad, titleH - 2, rc.Right - 520, titleH + 34}, cSub, fSmall, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
-	bw, bh := int32(96), int32(38)
+	bw, bh := int32(110), int32(42)
 	bx := rc.Right - pad - bw
-	by := titleH + 1
+	by := titleH + 3
 	btn(g, RECT{bx, by, bx + bw, by + bh}, "＋ 新增", idNew, cAccent, cBlack)
 	bx -= bw + 10
 	btn(g, RECT{bx, by, bx + bw, by + bh}, "导入", idImport, cBtn, cText)
@@ -621,7 +621,7 @@ func paintMain(hdc uintptr, rc RECT) {
 	bx -= bw + 10
 	btn(g, RECT{bx, by, bx + bw, by + bh}, "日志", idLog, cBtn, cText)
 
-	g.fill(RECT{0, 116, rc.Right, 117}, cLine)
+	g.fill(RECT{0, 126, rc.Right, 127}, cLine)
 
 	cfgMu.Lock()
 	items := append([]Item(nil), cfg.Items...)
@@ -635,9 +635,9 @@ func paintMain(hdc uintptr, rc RECT) {
 		scrollTop = 0
 	}
 
-	top := int32(132)
-	pitch := int32(90)
-	rowH := int32(78)
+	top := int32(142)
+	pitch := int32(100)
+	rowH := int32(88)
 
 	if len(items) == 0 {
 		g.text("还没有转发规则，点右上角「＋ 新增」加一条",
@@ -655,40 +655,41 @@ func paintMain(hdc uintptr, rc RECT) {
 		g.round(r, 14, cardBg)
 		hitsMain = append(hitsMain, hitBox{id: baseCard + scrollTop + i, rect: r})
 
+		btH := int32(42)
+		btY := r.Top + (rowH-btH)/2
+		delR := RECT{r.Right - 24 - 70, btY, r.Right - 24, btY + btH}
+		editR := RECT{delR.Left - 10 - 70, btY, delR.Left - 10, btY + btH}
+		togR := RECT{editR.Left - 12 - 100, btY, editR.Left - 12, btY + btH}
+
 		name := it.Name
 		if name == "" {
 			name = "未命名"
 		}
-		g.text(name, RECT{r.Left + 22, r.Top + 10, r.Right - 390, r.Top + 42}, cText, fH1,
+		g.text(name, RECT{r.Left + 24, r.Top + 8, togR.Left - 150, r.Top + 48}, cText, fH1,
 			DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS)
 		mapText := it.Target() + "   →   本机 " + strconv.Itoa(it.LocalPort)
-		g.text(mapText, RECT{r.Left + 22, r.Top + 42, r.Right - 390, r.Top + 70}, cSub, fNum,
+		if running {
+			if n := eng.Conns(it.ID); n > 0 {
+				mapText += fmt.Sprintf("   ·   %d 连接", n)
+			}
+		}
+		g.text(mapText, RECT{r.Left + 24, r.Top + 48, togR.Left - 150, r.Top + 82}, cSub, fNum,
 			DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS)
 
 		dotC := cIdle
 		statusText := "已停止"
 		if svcManaged && it.Enabled {
-			dotC = cRun
-			statusText = "服务托管"
+			dotC, statusText = cRun, "服务托管"
 		} else if running {
-			dotC = cRun
-			statusText = "运行中"
-			if n := eng.Conns(it.ID); n > 0 {
-				statusText += fmt.Sprintf(" · %d 连接", n)
-			}
+			dotC, statusText = cRun, "运行中"
 		} else if e := eng.Err(it.ID); e != "" {
-			dotC = cDanger
-			statusText = "失败"
+			dotC, statusText = cDanger, "失败"
 		}
-		g.circle(r.Right-330, r.Top+38, 5, dotC)
-		g.text(statusText, RECT{r.Right - 316, r.Top + 24, r.Right - 200, r.Top + 52}, dotC, fSmall,
+		stRight := togR.Left - 16
+		stLeft := stRight - 108
+		g.circle(stLeft-16, r.Top+44, 6, dotC)
+		g.text(statusText, RECT{stLeft, r.Top + 28, stRight, r.Top + 60}, dotC, fSmall,
 			DT_LEFT|DT_VCENTER|DT_SINGLELINE)
-
-		btH := int32(36)
-		btY := r.Top + (rowH-btH)/2
-		delR := RECT{r.Right - 22 - 60, btY, r.Right - 22, btY + btH}
-		editR := RECT{delR.Left - 8 - 60, btY, delR.Left - 8, btY + btH}
-		togR := RECT{editR.Left - 10 - 90, btY, editR.Left - 10, btY + btH}
 
 		if running {
 			btn(g, togR, "停止", baseToggle+scrollTop+i, cBtn, cSub)
@@ -705,18 +706,18 @@ func paintMain(hdc uintptr, rc RECT) {
 			runCount++
 		}
 	}
-	fy := rc.Bottom - 44
-	g.fill(RECT{0, fy - 12, rc.Right, fy - 11}, cLine)
+	fy := rc.Bottom - 52
+	g.fill(RECT{0, fy - 14, rc.Right, fy - 13}, cLine)
 	g.text(fmt.Sprintf("共 %d 条 · 运行中 %d 条", len(items), runCount),
-		RECT{pad, fy - 4, rc.Right - pad, fy + 26}, cSub, fSmall, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
+		RECT{pad, fy - 6, rc.Right - pad, fy + 34}, cSub, fBody, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	if len(items) > maxRows {
 		g.text(fmt.Sprintf("滚轮翻页 %d/%d", scrollTop+1, len(items)-maxRows+1),
-			RECT{pad, fy - 4, rc.Right - pad, fy + 26}, cSub, fSmall, DT_RIGHT|DT_VCENTER|DT_SINGLELINE)
+			RECT{pad, fy - 6, rc.Right - pad, fy + 34}, cSub, fBody, DT_RIGHT|DT_VCENTER|DT_SINGLELINE)
 	}
 	for _, it := range items {
 		if !eng.Running(it.ID) {
 			if e := eng.Err(it.ID); e != "" {
-				g.text("⚠ "+e, RECT{pad + 180, fy - 4, rc.Right - pad, fy + 26}, cDanger, fSmall,
+				g.text("⚠ "+e, RECT{pad + 220, fy - 6, rc.Right - pad, fy + 34}, cDanger, fBody,
 					DT_RIGHT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS)
 				break
 			}
@@ -740,8 +741,11 @@ func btn(g gfx, r RECT, label string, id int, bg, fg uint32) {
 	}
 }
 
+// hitTest 反向遍历：后加入的（按钮）优先于先加入的（整行卡片）。
+// 之前是从前往后找，整行卡片的矩形先命中，导致行内「启动/编辑/删除」永远点不到。
 func hitTest(boxes []hitBox, x, y int32) int {
-	for _, h := range boxes {
+	for i := len(boxes) - 1; i >= 0; i-- {
+		h := boxes[i]
 		if x >= h.rect.Left && x < h.rect.Right && y >= h.rect.Top && y < h.rect.Bottom {
 			return h.id
 		}
@@ -787,16 +791,23 @@ func toggleItem(idx int) {
 		return
 	}
 	it := &cfg.Items[idx]
+	var startErr error
 	if eng.Running(it.ID) {
 		eng.Stop(it.ID)
 		it.Enabled = false
 	} else {
-		_ = eng.Start(*it)
-		it.Enabled = true
+		startErr = eng.Start(*it)
+		it.Enabled = startErr == nil
 	}
+	name := it.Name
+	localPort := it.LocalPort
 	_ = saveConfig(&cfg)
 	cfgMu.Unlock()
 	proc.InvalidateRect.Call(hwndMain, 0, 0)
+	if startErr != nil {
+		proc.InvalidateRect.Call(hwndMain, 0, 0)
+		msgBox(fmt.Sprintf("启动失败：%s\n\n本地端口 %d 起不来。通常是这个端口已被别的程序占用（比如旧的转发任务），\n或者需要管理员权限。", startErr.Error(), localPort), "PortFwd · "+name)
+	}
 }
 
 func deleteItem(idx int) {
@@ -949,8 +960,8 @@ func openDlg(idx int) {
 	if dlgEditing >= 0 {
 		title = "编辑转发"
 	}
-	x, y := int32(300), int32(180)
-	w, h := int32(560), int32(452)
+	x, y := int32(280), int32(150)
+	w, h := int32(620), int32(510)
 	hwndDlg, _, _ = proc.CreateWindowExW.Call(
 		0x00040000, uintptr(unsafe.Pointer(utf16ptr("PortFwdDlg"))), uintptr(unsafe.Pointer(utf16ptr(title))),
 		0x80000000, uintptr(x), uintptr(y), uintptr(w), uintptr(h),
@@ -1016,24 +1027,24 @@ func buildDlg(hwnd uintptr) {
 	mkLabel := func(text string, y int32) {
 		h, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("STATIC"))), uintptr(unsafe.Pointer(utf16ptr(text))),
-			0x50000000, 26, uintptr(y), 508, 20, hwnd, 0, hInst, 0)
+			0x50000000, 30, uintptr(y), 560, 24, hwnd, 0, hInst, 0)
 		proc.SendMessageW.Call(h, 0x0030, fSmall, 0)
 	}
 	mkEdit := func(y int32, text string) uintptr {
 		e, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("EDIT"))), uintptr(unsafe.Pointer(utf16ptr(text))),
-			0x50000000|0x0080, 26, uintptr(y), 508, 34, hwnd, 0, hInst, 0)
+			0x50000000|0x0080, 30, uintptr(y), 560, 40, hwnd, 0, hInst, 0)
 		proc.SendMessageW.Call(e, 0x0030, fBody, 0)
 		return e
 	}
-	mkLabel("名称（留空则用 地址:端口）", 66)
-	dlgEdits[0] = mkEdit(88, it.Name)
-	mkLabel("目标地址（IP 或域名）", 136)
-	dlgEdits[1] = mkEdit(158, it.TargetHost)
-	mkLabel("目标端口", 206)
-	dlgEdits[2] = mkEdit(228, portText(it.TargetPort))
-	mkLabel("本地端口（对外提供服务的端口）", 276)
-	dlgEdits[3] = mkEdit(298, portText(it.LocalPort))
+	mkLabel("名称（留空则用 地址:端口）", 72)
+	dlgEdits[0] = mkEdit(98, it.Name)
+	mkLabel("目标地址（IP 或域名）", 154)
+	dlgEdits[1] = mkEdit(180, it.TargetHost)
+	mkLabel("目标端口", 236)
+	dlgEdits[2] = mkEdit(262, portText(it.TargetPort))
+	mkLabel("本地端口（对外提供服务的端口）", 318)
+	dlgEdits[3] = mkEdit(344, portText(it.LocalPort))
 	proc.SetFocus.Call(dlgEdits[1])
 }
 
@@ -1057,21 +1068,21 @@ func paintDlg(hdc uintptr, rc RECT) {
 	if dlgEditing >= 0 {
 		title = "编辑转发"
 	}
-	g.text(title, RECT{26, 2, rc.Right - 70, 50}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
-	closeR := RECT{rc.Right - 54, 10, rc.Right - 18, 42}
+	g.text(title, RECT{30, 2, rc.Right - 80, 56}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
+	closeR := RECT{rc.Right - 58, 12, rc.Right - 18, 48}
 	if hoverID == idDlgClose {
 		g.round(closeR, 8, cBtnHov)
 	}
 	g.text("×", closeR, cText, fTitle, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	hitsDlg = append(hitsDlg, hitBox{id: idDlgClose, rect: closeR})
 
-	bw, bh := int32(104), int32(38)
-	by := rc.Bottom - 56
-	cancel := RECT{rc.Right - 26 - bw, by, rc.Right - 26, by + bh}
-	save := RECT{cancel.Left - 12 - bw, by, cancel.Left - 12, by + bh}
+	bw, bh := int32(118), int32(44)
+	by := rc.Bottom - 62
+	cancel := RECT{rc.Right - 30 - bw, by, rc.Right - 30, by + bh}
+	save := RECT{cancel.Left - 14 - bw, by, cancel.Left - 14, by + bh}
 	btn(g, save, "保存", idSave, cAccent, cBlack)
 	btn(g, cancel, "取消", idCancel, cBtn, cText)
-	g.text("保存后自动启动", RECT{26, by, save.Left - 12, by + bh}, cSub, fSmall,
+	g.text("保存后自动启动", RECT{30, by, save.Left - 14, by + bh}, cSub, fSmall,
 		DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
 	pBitBlt.Call(hdc, 0, 0, uintptr(rc.W()), uintptr(rc.H()), mdc, 0, 0, 0x00CC0020)
