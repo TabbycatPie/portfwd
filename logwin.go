@@ -79,7 +79,7 @@ func wndLogProc(hwnd, msg, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case WM_LBUTTONDOWN:
-		x, y := loword(lp), hiword(lp)
+		x, y := toLogical(loword(lp), hiword(lp))
 		switch hitTest(hitsLog, x, y) {
 		case idLogClose:
 			destroyLog()
@@ -131,10 +131,9 @@ func humanBytes(n int64) string {
 	}
 }
 
-func paintLog(hdc uintptr, rc RECT) {
-	mdc, _, _ := pCreateCompatibleDC.Call(hdc)
-	bmp, _, _ := pCreateCompatibleBitmap.Call(hdc, uintptr(rc.W()), uintptr(rc.H()))
-	old, _, _ := proc.SelectObject.Call(mdc, bmp)
+func paintLog(hdc uintptr, prc RECT) {
+	mdc, bmp, old := newGfxDC(hdc, prc)
+	rc := logicalRect(prc)
 	g := gfx{mdc}
 	g.fill(rc, cBg)
 	hitsLog = hitsLog[:0]
@@ -220,8 +219,5 @@ func paintLog(hdc uintptr, rc RECT) {
 	br := RECT{rc.Right - 28 - 88, fy - 6, rc.Right - 28, fy + 32}
 	btn(g, br, "清空", idLogClear, cBtn, cDanger)
 
-	pBitBlt.Call(hdc, 0, 0, uintptr(rc.W()), uintptr(rc.H()), mdc, 0, 0, 0x00CC0020)
-	proc.SelectObject.Call(mdc, old)
-	pDeleteDC.Call(mdc)
-	proc.DeleteObject.Call(bmp)
+	blitGfxDC(hdc, prc, mdc, bmp, old)
 }
