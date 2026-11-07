@@ -28,6 +28,8 @@ var (
 		DeleteObject, CreateFontW, Rectangle, Ellipse, RoundRect, GetStockObject            *syscall.LazyProc
 		SetTextAlign, SetWindowPos, FillRect, GetModuleHandleW, ShowCursor                  *syscall.LazyProc
 		ReleaseCapture, GetForegroundWindow, AttachThreadInput, BringWindowToTop            *syscall.LazyProc
+		SetProcessDpiAwarenessContext, GetDpiForSystem, GetDpiForWindow, SetProcessDPIAware  *syscall.LazyProc
+		SetMapMode, SetWindowExtEx, SetViewportExtEx                                       *syscall.LazyProc
 		GetWindowThreadProcessId                                                            *syscall.LazyProc
 	}{}
 	gproc = struct {
@@ -105,6 +107,13 @@ func init() {
 	proc.AttachThreadInput = u32.NewProc("AttachThreadInput")
 	proc.BringWindowToTop = u32.NewProc("BringWindowToTop")
 	proc.GetWindowThreadProcessId = u32.NewProc("GetWindowThreadProcessId")
+	proc.SetProcessDpiAwarenessContext = u32.NewProc("SetProcessDpiAwarenessContext")
+	proc.GetDpiForSystem = u32.NewProc("GetDpiForSystem")
+	proc.GetDpiForWindow = u32.NewProc("GetDpiForWindow")
+	proc.SetProcessDPIAware = u32.NewProc("SetProcessDPIAware")
+	proc.SetMapMode = g32.NewProc("SetMapMode")
+	proc.SetWindowExtEx = g32.NewProc("SetWindowExtEx")
+	proc.SetViewportExtEx = g32.NewProc("SetViewportExtEx")
 
 	gproc.ShellNotifyIcon = s32.NewProc("Shell_NotifyIconW")
 	gproc.CreateIconFromResEx = u32.NewProc("CreateIconFromResourceEx")
@@ -145,6 +154,8 @@ const (
 	SWP_NOSIZE     = 0x0001
 	SWP_NOMOVE     = 0x0002
 	SWP_NOACTIVATE = 0x0010
+	MM_TEXT        = 1
+	MM_ANISOTROPIC = 8
 	SW_RESTORE  = 9
 
 	NIM_ADD    = 0
@@ -157,6 +168,8 @@ const (
 
 	MF_STRING    = 0x0
 	MF_SEPARATOR = 0x800
+	MF_POPUP     = 0x10
+	MF_CHECKED   = 0x8
 	MF_GRAYED    = 0x1
 	TPM_RIGHTBUTTON = 0x2
 	TPM_RETURNCMD   = 0x100
