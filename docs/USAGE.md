@@ -207,6 +207,21 @@ Rotation: the file is renamed to `portfwd.log.1` once it exceeds **2 MB** (one b
 
 > The log contains real internal IPs and ports — sanitise it before sharing.
 
+## 7c. High-DPI and UI scale
+
+The app is **Per-Monitor DPI V2** aware: the UI is laid out in logical units and scaled to physical
+pixels using the monitor's DPI, so text is rendered natively instead of being bitmap-stretched by Windows.
+
+Tray right-click → **界面缩放 (UI scale)** offers `90% / 100% / 115% / 130% / 150%` on top of the system
+DPI. It is persisted as `ui_scale` in the config file:
+
+```json
+{
+  "items": [ ... ],
+  "ui_scale": 1.15
+}
+```
+
 ## 8. Command line
 
 | Flag | Purpose |
