@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,6 +82,8 @@ const (
 	trayStopAll
 	trayExit
 	trayOpenLog
+	trayInstallSvc
+	trayUninstallSvc
 )
 
 var (
@@ -102,7 +105,8 @@ var (
 	hoverID    int
 	dlgEditing = -1
 	dlgEdits   [4]uintptr
-	trayMsg    uint32
+	trayMsg            uint32
+	taskbarCreatedMsg  uint32
 
 	hitSink *[]hitBox
 	hitsMain []hitBox
@@ -165,9 +169,17 @@ func makeIcon(imgs []icoImg, want int) uintptr {
 
 // ---------- 入口 ----------
 
-var startHidden bool
+var (
+	startHidden bool
+	svcManaged  bool // 服务在跑，面板只编辑不监听
+)
 
 func main() {
+	// 关键：Win32 窗口必须在「创建它的那个 OS 线程」上跑消息循环。
+	// Go 的 goroutine 默认会在多个 OS 线程之间迁移，一旦迁移，窗口就会变成没人 pump 消息的
+	// 僵尸窗口（面板看起来「卡死」，但转发引擎照常工作）。所以先把主 goroutine 钉死在这个线程。
+	runtime.LockOSThread()
+
 	for _, a := range os.Args[1:] {
 		if a == "--tray" || a == "--startup" {
 			startHidden = true
@@ -182,6 +194,29 @@ func main() {
 			c := loadConfig()
 			b, _ := json.MarshalIndent(c, "", "  ")
 			_ = os.WriteFile(filepath.Join(os.TempDir(), "portfwd-dump.json"), b, 0644)
+			return
+		case "--service":
+			runService()
+			return
+		case "--install":
+			initLog()
+			if err := installService(); err != nil {
+				logf("install service FAIL: %v", err)
+				msgBox("安装服务失败：\n"+err.Error()+"\n\n请在管理员窗口里执行。", "PortFwd")
+				return
+			}
+			logf("service installed")
+			msgBox("已注册为开机自启服务 PortFwd，并已启动。\n\n配置：%ProgramData%\\PortFwd\\config.json\n面板可以继续用来编辑规则，改完自动生效。", "PortFwd")
+			return
+		case "--uninstall":
+			initLog()
+			if err := uninstallService(); err != nil {
+				logf("uninstall service FAIL: %v", err)
+				msgBox("卸载服务失败：\n"+err.Error(), "PortFwd")
+				return
+			}
+			logf("service uninstalled")
+			msgBox("服务已停止并删除。", "PortFwd")
 			return
 		case "--selftest":
 			runSelfTest()
@@ -263,6 +298,8 @@ func main() {
 
 	tm, _, _ := proc.RegisterWindowMessageW.Call(uintptr(unsafe.Pointer(utf16ptr("PortFwdTrayMsg"))))
 	trayMsg = uint32(tm)
+	tb, _, _ := proc.RegisterWindowMessageW.Call(uintptr(unsafe.Pointer(utf16ptr("TaskbarCreated"))))
+	taskbarCreatedMsg = uint32(tb)
 	addTray()
 
 	notifyUI = func() {
@@ -272,8 +309,12 @@ func main() {
 		}
 	}
 
+	svcManaged = serviceRunning()
+	if svcManaged {
+		logf("service PortFwd is running -> panel runs in edit-only mode")
+	}
 	for _, it := range cfg.Items {
-		if it.Enabled {
+		if it.Enabled && !svcManaged {
 			_ = eng.Start(it)
 		}
 	}
@@ -355,6 +396,11 @@ func showTrayMenu() {
 	proc.AppendMenuW.Call(hm, MF_STRING, trayStopAll, uintptr(unsafe.Pointer(utf16ptr("全部停止"))))
 	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
 	proc.AppendMenuW.Call(hm, MF_STRING, trayOpenLog, uintptr(unsafe.Pointer(utf16ptr("打开日志"))))
+	if serviceInstalled() {
+		proc.AppendMenuW.Call(hm, MF_STRING, trayUninstallSvc, uintptr(unsafe.Pointer(utf16ptr("卸载后台服务"))))
+	} else {
+		proc.AppendMenuW.Call(hm, MF_STRING, trayInstallSvc, uintptr(unsafe.Pointer(utf16ptr("安装为后台服务"))))
+	}
 	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
 	proc.AppendMenuW.Call(hm, MF_STRING, trayExit, uintptr(unsafe.Pointer(utf16ptr("退出"))))
 
@@ -378,11 +424,63 @@ func showTrayMenu() {
 			uintptr(unsafe.Pointer(utf16ptr("open"))),
 			uintptr(unsafe.Pointer(utf16ptr(logPathFor()))),
 			0, 0, 1)
+	case trayInstallSvc:
+		if err := installService(); err != nil {
+			msgBox("安装服务失败：\n"+err.Error()+"\n\n请以管理员身份运行本程序。", "PortFwd")
+		} else {
+			svcManaged = true
+			eng.StopAll(cfg.Items)
+			msgBox("已安装为开机自启服务，转发交由服务执行。\n配置：%ProgramData%\\PortFwd\\config.json", "PortFwd")
+		}
+		proc.InvalidateRect.Call(hwndMain, 0, 0)
+	case trayUninstallSvc:
+		if err := uninstallService(); err != nil {
+			msgBox("卸载服务失败：\n"+err.Error(), "PortFwd")
+		} else {
+			svcManaged = false
+			msgBox("后台服务已卸载，恢复由面板直接转发。", "PortFwd")
+		}
+		proc.InvalidateRect.Call(hwndMain, 0, 0)
 	case trayExit:
 		logf("quit by user")
 		delTray()
 		proc.DestroyWindow.Call(hwndMain)
 	}
+}
+
+// forceForeground 把窗口强行提到最前并激活。
+// 直接调 SetForegroundWindow 会被 Windows 的前台锁挡住（进程不在前台时调用无效），
+// 所以先 AttachThreadInput 到当前前台窗口的线程，再置前，最后用一次 TOPMOST 兜底。
+func forceForeground(hwnd uintptr) {
+	fg, _, _ := proc.GetForegroundWindow.Call()
+	tidFg, _, _ := proc.GetWindowThreadProcessId.Call(fg, 0)
+	tidMe, _, _ := kproc.GetCurrentThreadId.Call()
+
+	attached := false
+	if fg != 0 && tidFg != 0 && tidFg != tidMe {
+		if ok, _, _ := proc.AttachThreadInput.Call(tidMe, tidFg, 1); ok != 0 {
+			attached = true
+		}
+	}
+	proc.BringWindowToTop.Call(hwnd)
+	proc.SetForegroundWindow.Call(hwnd)
+	proc.SetFocus.Call(hwnd)
+	if attached {
+		proc.AttachThreadInput.Call(tidMe, tidFg, 0)
+	}
+
+	// 兜底：短暂置顶再撤掉，保证一定浮到最上层
+	hwndTopMost := ^uintptr(0)   // -1
+	hwndNoTopMost := ^uintptr(1) // -2
+	proc.SetWindowPos.Call(hwnd, hwndTopMost, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)
+	proc.SetWindowPos.Call(hwnd, hwndNoTopMost, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)
+
+	logf("forceForeground hwnd=%d fg=%d attached=%v nowFg=%d", hwnd, fg, attached, mustForeground())
+}
+
+func mustForeground() uintptr {
+	h, _, _ := proc.GetForegroundWindow.Call()
+	return h
 }
 
 func showMain() {
@@ -393,7 +491,7 @@ func showMain() {
 		proc.ShowWindow.Call(hwndMain, SW_RESTORE)
 	}
 	roundRegion(hwndMain, 14)
-	proc.SetForegroundWindow.Call(hwndMain)
+	forceForeground(hwndMain)
 	proc.InvalidateRect.Call(hwndMain, 0, 1)
 	logf("panel shown")
 }
@@ -446,6 +544,11 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		eng.StopAll(cfg.Items)
 		proc.KillTimer.Call(hwnd, 1)
 		proc.PostQuitMessage.Call(0)
+		return 0
+	}
+	if taskbarCreatedMsg != 0 && msg == uintptr(taskbarCreatedMsg) {
+		logf("explorer restarted -> re-add tray icon")
+		addTray()
 		return 0
 	}
 	if trayMsg != 0 && msg == uintptr(trayMsg) {
@@ -564,7 +667,10 @@ func paintMain(hdc uintptr, rc RECT) {
 
 		dotC := cIdle
 		statusText := "已停止"
-		if running {
+		if svcManaged && it.Enabled {
+			dotC = cRun
+			statusText = "服务托管"
+		} else if running {
 			dotC = cRun
 			statusText = "运行中"
 			if n := eng.Conns(it.ID); n > 0 {
