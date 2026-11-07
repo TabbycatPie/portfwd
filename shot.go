@@ -19,12 +19,12 @@ var pGetDIBits = g32b.NewProc("GetDIBits")
 func runShot(path string) {
 	hInst, _, _ = proc.GetModuleHandleW.Call(0)
 
-	fTitle = newFont(22, true)
-	fH1 = newFont(18, true)
-	fBody = newFont(16, false)
-	fSmall = newFont(15, false)
-	fBtn = newFont(15, false)
-	fNum = newFont(15, false)
+	fTitle = newFont(25, true)
+	fH1 = newFont(21, true)
+	fBody = newFont(18, false)
+	fSmall = newFont(17, false)
+	fBtn = newFont(17, false)
+	fNum = newFont(17, false)
 
 	// 演示数据（不写盘；端口用高位避免与线上转发冲突）
 	cfg = Config{Items: []Item{
@@ -38,7 +38,7 @@ func runShot(path string) {
 	scrollTop = 0
 	hoverID = baseToggle
 
-	rc := RECT{0, 0, 900, 700}
+	rc := RECT{0, 0, 980, 780}
 	screenDC, _, _ := proc.GetDC.Call(0)
 	mdc, _, _ := pCreateCompatibleDC.Call(screenDC)
 	bmp, _, _ := pCreateCompatibleBitmap.Call(screenDC, uintptr(rc.W()), uintptr(rc.H()))
@@ -125,12 +125,12 @@ func runSelfTest() {
 
 func runShotLog(path string) {
 	hInst, _, _ = proc.GetModuleHandleW.Call(0)
-	fTitle = newFont(22, true)
-	fH1 = newFont(18, true)
-	fBody = newFont(16, false)
-	fSmall = newFont(15, false)
-	fBtn = newFont(15, false)
-	fNum = newFont(15, false)
+	fTitle = newFont(25, true)
+	fH1 = newFont(21, true)
+	fBody = newFont(18, false)
+	fSmall = newFont(17, false)
+	fBtn = newFont(17, false)
+	fNum = newFont(17, false)
 
 	now := time.Now()
 	demo := []ConnEvent{
@@ -147,7 +147,7 @@ func runShotLog(path string) {
 	}
 	evMu.Unlock()
 
-	rc := RECT{0, 0, 900, 600}
+	rc := RECT{0, 0, 980, 640}
 	screenDC, _, _ := proc.GetDC.Call(0)
 	mdc, _, _ := pCreateCompatibleDC.Call(screenDC)
 	bmp, _, _ := pCreateCompatibleBitmap.Call(screenDC, uintptr(rc.W()), uintptr(rc.H()))
