@@ -29,7 +29,7 @@ var (
 		SetTextAlign, SetWindowPos, FillRect, GetModuleHandleW, ShowCursor                  *syscall.LazyProc
 		ReleaseCapture, GetForegroundWindow, AttachThreadInput, BringWindowToTop            *syscall.LazyProc
 		SetProcessDpiAwarenessContext, GetDpiForSystem, GetDpiForWindow, SetProcessDPIAware  *syscall.LazyProc
-		SetMapMode, SetWindowExtEx, SetViewportExtEx                                       *syscall.LazyProc
+		SetMapMode, SetWindowExtEx, SetViewportExtEx, TrackMouseEvent                       *syscall.LazyProc
 		GetWindowThreadProcessId                                                            *syscall.LazyProc
 	}{}
 	gproc = struct {
@@ -114,6 +114,7 @@ func init() {
 	proc.SetMapMode = g32.NewProc("SetMapMode")
 	proc.SetWindowExtEx = g32.NewProc("SetWindowExtEx")
 	proc.SetViewportExtEx = g32.NewProc("SetViewportExtEx")
+	proc.TrackMouseEvent = u32.NewProc("TrackMouseEvent")
 
 	gproc.ShellNotifyIcon = s32.NewProc("Shell_NotifyIconW")
 	gproc.CreateIconFromResEx = u32.NewProc("CreateIconFromResourceEx")
@@ -145,6 +146,8 @@ const (
 	WM_LBUTTONDBLCLK = 0x0203
 	WM_RBUTTONUP     = 0x0205
 	WM_MOUSEWHEEL    = 0x020A
+	WM_MOUSELEAVE    = 0x02A3
+	TME_LEAVE        = 0x0002
 	WM_APP           = 0x8000
 	WM_NULL          = 0x0000
 
@@ -221,6 +224,13 @@ type PAINTSTRUCT struct {
 	IncUpdate  int32
 	Reserved   [32]byte
 }
+type TRACKMOUSEEVENT struct {
+	CbSize      uint32
+	DwFlags     uint32
+	HwndTrack   uintptr
+	DwHoverTime uint32
+}
+
 type WNDCLASSEX struct {
 	CbSize        uint32
 	Style         uint32
