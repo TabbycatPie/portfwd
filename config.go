@@ -22,6 +22,8 @@ type Config struct {
 	Items []Item `json:"items"`
 	// UIScale 界面缩放（1.0 = 100%），叠加在系统 DPI 之上
 	UIScale float64 `json:"ui_scale,omitempty"`
+	// Lang 界面语言："zh" / "en"；留空 = 跟随系统
+	Lang string `json:"lang,omitempty"`
 }
 
 var (
