@@ -84,6 +84,7 @@ const (
 	trayOpenLog
 	trayInstallSvc
 	trayUninstallSvc
+	trayScaleBase = 9100
 )
 
 var (
@@ -248,6 +249,11 @@ func main() {
 
 	hInst, _, _ = proc.GetModuleHandleW.Call(0)
 	cfg = loadConfig()
+	initDPI()
+	if cfg.UIScale > 0 {
+		userScale = cfg.UIScale
+	}
+	logf("dpi scale=%.2f user scale=%.2f", dpiScale, userScale)
 	logf("config loaded: %d rules from %s", len(cfg.Items), configPath())
 	for _, it := range cfg.Items {
 		logf("  rule %q local=:%d -> %s:%d enabled=%v", it.Name, it.LocalPort, it.TargetHost, it.TargetPort, it.Enabled)
@@ -278,7 +284,18 @@ func main() {
 
 	scrW, _, _ := proc.GetSystemMetrics.Call(0)
 	scrH, _, _ := proc.GetSystemMetrics.Call(1)
-	w, h := int32(980), int32(780)
+	w, h := iscale(980), iscale(780)
+	if maxW, maxH := int32(scrW)-40, int32(scrH)-80; w > maxW || h > maxH {
+		// 小屏兜底：保持比例缩到能放下
+		if w > maxW {
+			h = h * maxW / w
+			w = maxW
+		}
+		if h > maxH {
+			w = w * maxH / h
+			h = maxH
+		}
+	}
 	x := (int32(scrW) - w) / 2
 	y := (int32(scrH) - h) / 2
 
@@ -292,7 +309,7 @@ func main() {
 	}
 	darkTitle(hwndMain)
 	roundCorners(hwndMain)
-	roundRegion(hwndMain, 14)
+	roundRegion(hwndMain, iscale(14))
 	proc.SendMessageW.Call(hwndMain, WM_SETICON, 1, hIconWin)
 	proc.SendMessageW.Call(hwndMain, WM_SETICON, 0, hIconTray)
 
@@ -396,6 +413,18 @@ func showTrayMenu() {
 	proc.AppendMenuW.Call(hm, MF_STRING, trayStopAll, uintptr(unsafe.Pointer(utf16ptr("全部停止"))))
 	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
 	proc.AppendMenuW.Call(hm, MF_STRING, trayOpenLog, uintptr(unsafe.Pointer(utf16ptr("打开日志"))))
+
+	scaleMenu, _, _ := proc.CreatePopupMenu.Call()
+	cur := int(userScale*100 + 0.5)
+	for _, pct := range []int{90, 100, 115, 130, 150} {
+		flags := uintptr(MF_STRING)
+		if pct == cur {
+			flags |= MF_CHECKED
+		}
+		proc.AppendMenuW.Call(scaleMenu, flags, uintptr(trayScaleBase+pct),
+			uintptr(unsafe.Pointer(utf16ptr(fmt.Sprintf("界面缩放 %d%%", pct)))))
+	}
+	proc.AppendMenuW.Call(hm, MF_POPUP, scaleMenu, uintptr(unsafe.Pointer(utf16ptr("界面缩放"))))
 	if serviceInstalled() {
 		proc.AppendMenuW.Call(hm, MF_STRING, trayUninstallSvc, uintptr(unsafe.Pointer(utf16ptr("卸载后台服务"))))
 	} else {
@@ -411,6 +440,11 @@ func showTrayMenu() {
 		uintptr(pt.X), uintptr(pt.Y), 0, hwndMain, 0)
 	proc.PostMessageW.Call(hwndMain, WM_NULL, 0, 0)
 	proc.DestroyMenu.Call(hm)
+
+	if c := int(cmd); c > trayScaleBase && c < trayScaleBase+1000 {
+		applyUserScale(float64(c-trayScaleBase) / 100.0)
+		return
+	}
 
 	switch int(cmd) {
 	case trayOpen:
@@ -483,6 +517,36 @@ func mustForeground() uintptr {
 	return h
 }
 
+// applyUserScale 调整界面缩放：窗口按新比例重建大小并保持居中，配置写入 ui_scale
+func applyUserScale(v float64) {
+	if v < 0.8 || v > 2.0 {
+		return
+	}
+	userScale = v
+	cfg.UIScale = v
+	_ = saveConfig(&cfg)
+
+	scrW, _, _ := proc.GetSystemMetrics.Call(0)
+	scrH, _, _ := proc.GetSystemMetrics.Call(1)
+	w, h := iscale(980), iscale(780)
+	if maxW, maxH := int32(scrW)-40, int32(scrH)-80; w > maxW || h > maxH {
+		if w > maxW {
+			h = h * maxW / w
+			w = maxW
+		}
+		if h > maxH {
+			w = w * maxH / h
+			h = maxH
+		}
+	}
+	x := (int32(scrW) - w) / 2
+	y := (int32(scrH) - h) / 2
+	proc.MoveWindow.Call(hwndMain, uintptr(x), uintptr(y), uintptr(w), uintptr(h), 1)
+	roundRegion(hwndMain, iscale(14))
+	proc.InvalidateRect.Call(hwndMain, 0, 1)
+	logf("user scale -> %.2f (window %dx%d)", v, w, h)
+}
+
 func showMain() {
 	vis, _, _ := proc.IsWindowVisible.Call(hwndMain)
 	if vis == 0 {
@@ -490,7 +554,7 @@ func showMain() {
 	} else {
 		proc.ShowWindow.Call(hwndMain, SW_RESTORE)
 	}
-	roundRegion(hwndMain, 14)
+	roundRegion(hwndMain, iscale(14))
 	forceForeground(hwndMain)
 	proc.InvalidateRect.Call(hwndMain, 0, 1)
 	logf("panel shown")
@@ -509,10 +573,12 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		proc.EndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		return 0
 	case WM_LBUTTONDOWN:
-		onClick(loword(lp), hiword(lp))
+		lx, ly := toLogical(loword(lp), hiword(lp))
+		onClick(lx, ly)
 		return 0
 	case WM_MOUSEMOVE:
-		id := hitTest(hitsMain, loword(lp), hiword(lp))
+		lx, ly := toLogical(loword(lp), hiword(lp))
+		id := hitTest(hitsMain, lx, ly)
 		if id != hoverID {
 			hoverID = id
 			proc.InvalidateRect.Call(hwnd, 0, 0)
@@ -528,7 +594,18 @@ func wndMain(hwnd, msg, wp, lp uintptr) uintptr {
 		proc.InvalidateRect.Call(hwnd, 0, 0)
 		return 0
 	case WM_SIZE:
-		roundRegion(hwnd, 14)
+		roundRegion(hwnd, iscale(14))
+		return 0
+	case 0x02E0: // WM_DPICHANGED
+		refreshDPI(hwnd)
+		if lp != 0 {
+			sugg := (*RECT)(unsafe.Pointer(lp))
+			proc.MoveWindow.Call(hwnd, uintptr(sugg.Left), uintptr(sugg.Top),
+				uintptr(sugg.W()), uintptr(sugg.H()), 1)
+		}
+		roundRegion(hwnd, iscale(14))
+		logf("dpi changed -> %.2f", dpiScale)
+		proc.InvalidateRect.Call(hwnd, 0, 1)
 		return 0
 	case WM_TIMER:
 		proc.InvalidateRect.Call(hwnd, 0, 0)
@@ -580,10 +657,9 @@ type hitBox struct {
 	rect RECT
 }
 
-func paintMain(hdc uintptr, rc RECT) {
-	mdc, _, _ := pCreateCompatibleDC.Call(hdc)
-	bmp, _, _ := pCreateCompatibleBitmap.Call(hdc, uintptr(rc.W()), uintptr(rc.H()))
-	old, _, _ := proc.SelectObject.Call(mdc, bmp)
+func paintMain(hdc uintptr, prc RECT) {
+	mdc, bmp, old := newGfxDC(hdc, prc)
+	rc := logicalRect(prc)
 
 	g := gfx{mdc}
 	g.fill(rc, cBg)
@@ -724,10 +800,7 @@ func paintMain(hdc uintptr, rc RECT) {
 		}
 	}
 
-	pBitBlt.Call(hdc, 0, 0, uintptr(rc.W()), uintptr(rc.H()), mdc, 0, 0, 0x00CC0020)
-	proc.SelectObject.Call(mdc, old)
-	pDeleteDC.Call(mdc)
-	proc.DeleteObject.Call(bmp)
+	blitGfxDC(hdc, prc, mdc, bmp, old)
 }
 
 func btn(g gfx, r RECT, label string, id int, bg, fg uint32) {
@@ -961,13 +1034,13 @@ func openDlg(idx int) {
 		title = "编辑转发"
 	}
 	x, y := int32(280), int32(150)
-	w, h := int32(620), int32(510)
+	w, h := iscale(620), iscale(510)
 	hwndDlg, _, _ = proc.CreateWindowExW.Call(
 		0x00040000, uintptr(unsafe.Pointer(utf16ptr("PortFwdDlg"))), uintptr(unsafe.Pointer(utf16ptr(title))),
 		0x80000000, uintptr(x), uintptr(y), uintptr(w), uintptr(h),
 		hwndMain, 0, hInst, 0)
 	roundCorners(hwndDlg)
-	roundRegion(hwndDlg, 14)
+	roundRegion(hwndDlg, iscale(14))
 	proc.ShowWindow.Call(hwndDlg, SW_SHOW)
 	proc.SetForegroundWindow.Call(hwndDlg)
 }
@@ -1002,10 +1075,12 @@ func wndDlgProc(hwnd, msg, wp, lp uintptr) uintptr {
 		proc.EndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		return 0
 	case WM_LBUTTONDOWN:
-		dlgClick(loword(lp), hiword(lp))
+		lx, ly := toLogical(loword(lp), hiword(lp))
+		dlgClick(lx, ly)
 		return 0
 	case WM_MOUSEMOVE:
-		id := hitTest(hitsDlg, loword(lp), hiword(lp))
+		lx, ly := toLogical(loword(lp), hiword(lp))
+		id := hitTest(hitsDlg, lx, ly)
 		if id != hoverID {
 			hoverID = id
 			proc.InvalidateRect.Call(hwnd, 0, 0)
@@ -1024,17 +1099,20 @@ func buildDlg(hwnd uintptr) {
 	if dlgEditing >= 0 && dlgEditing < len(cfg.Items) {
 		it = cfg.Items[dlgEditing]
 	}
+	pf := uiTotal()
 	mkLabel := func(text string, y int32) {
 		h, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("STATIC"))), uintptr(unsafe.Pointer(utf16ptr(text))),
-			0x50000000, 30, uintptr(y), 560, 24, hwnd, 0, hInst, 0)
-		proc.SendMessageW.Call(h, 0x0030, fSmall, 0)
+			0x50000000, uintptr(iscale(float64(30))), uintptr(iscale(float64(y))),
+			uintptr(iscale(560)), uintptr(iscale(24)), hwnd, 0, hInst, 0)
+		proc.SendMessageW.Call(h, 0x0030, newFont(int32(17*pf), false), 0)
 	}
 	mkEdit := func(y int32, text string) uintptr {
 		e, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("EDIT"))), uintptr(unsafe.Pointer(utf16ptr(text))),
-			0x50000000|0x0080, 30, uintptr(y), 560, 40, hwnd, 0, hInst, 0)
-		proc.SendMessageW.Call(e, 0x0030, fBody, 0)
+			0x50000000|0x0080, uintptr(iscale(30)), uintptr(iscale(float64(y))),
+			uintptr(iscale(560)), uintptr(iscale(40)), hwnd, 0, hInst, 0)
+		proc.SendMessageW.Call(e, 0x0030, newFont(int32(18*pf), false), 0)
 		return e
 	}
 	mkLabel("名称（留空则用 地址:端口）", 72)
@@ -1055,10 +1133,9 @@ func portText(p int) string {
 	return strconv.Itoa(p)
 }
 
-func paintDlg(hdc uintptr, rc RECT) {
-	mdc, _, _ := pCreateCompatibleDC.Call(hdc)
-	bmp, _, _ := pCreateCompatibleBitmap.Call(hdc, uintptr(rc.W()), uintptr(rc.H()))
-	old, _, _ := proc.SelectObject.Call(mdc, bmp)
+func paintDlg(hdc uintptr, prc RECT) {
+	mdc, bmp, old := newGfxDC(hdc, prc)
+	rc := logicalRect(prc)
 	g := gfx{mdc}
 	g.fill(rc, cBg)
 	hitsDlg = hitsDlg[:0]
@@ -1085,10 +1162,7 @@ func paintDlg(hdc uintptr, rc RECT) {
 	g.text("保存后自动启动", RECT{30, by, save.Left - 14, by + bh}, cSub, fSmall,
 		DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
-	pBitBlt.Call(hdc, 0, 0, uintptr(rc.W()), uintptr(rc.H()), mdc, 0, 0, 0x00CC0020)
-	proc.SelectObject.Call(mdc, old)
-	pDeleteDC.Call(mdc)
-	proc.DeleteObject.Call(bmp)
+	blitGfxDC(hdc, prc, mdc, bmp, old)
 }
 
 func dlgClick(x, y int32) {
