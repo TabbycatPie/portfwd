@@ -47,6 +47,7 @@ func openLog() {
 	roundCorners(hwndLog)
 	roundRegion(hwndLog, 14)
 	proc.ShowWindow.Call(hwndLog, SW_SHOW)
+	forceForeground(hwndLog)
 	proc.SetForegroundWindow.Call(hwndLog)
 }
 
