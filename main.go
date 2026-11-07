@@ -700,7 +700,7 @@ func doImport() {
 		return
 	}
 	var nc Config
-	if err := json.Unmarshal(b, &nc); err != nil {
+	if err := json.Unmarshal(stripBOM(b), &nc); err != nil {
 		msgBox("不是有效的配置文件：\n"+err.Error(), "端口转发")
 		return
 	}
