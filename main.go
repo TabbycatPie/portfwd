@@ -87,6 +87,12 @@ const (
 	trayScaleBase = 9100
 )
 
+const (
+	trayLangAuto = 9301
+	trayLangZh   = 9302
+	trayLangEn   = 9303
+)
+
 var (
 	hInst      uintptr
 	hwndMain   uintptr
@@ -203,21 +209,21 @@ func main() {
 			initLog()
 			if err := installService(); err != nil {
 				logf("install service FAIL: %v", err)
-				msgBox("安装服务失败：\n"+err.Error()+"\n\n请在管理员窗口里执行。", "PortFwd")
+				msgBox(T("svc.install.fail", err.Error()), "PortFwd")
 				return
 			}
 			logf("service installed")
-			msgBox("已注册为开机自启服务 PortFwd，并已启动。\n\n配置：%ProgramData%\\PortFwd\\config.json\n面板可以继续用来编辑规则，改完自动生效。", "PortFwd")
+			msgBox(T("svc.install.ok.cli"), "PortFwd")
 			return
 		case "--uninstall":
 			initLog()
 			if err := uninstallService(); err != nil {
 				logf("uninstall service FAIL: %v", err)
-				msgBox("卸载服务失败：\n"+err.Error(), "PortFwd")
+				msgBox(T("svc.uninstall.fail", err.Error()), "PortFwd")
 				return
 			}
 			logf("service uninstalled")
-			msgBox("服务已停止并删除。", "PortFwd")
+			msgBox(T("svc.removed.cli"), "PortFwd")
 			return
 		case "--selftest":
 			runSelfTest()
@@ -249,6 +255,7 @@ func main() {
 
 	hInst, _, _ = proc.GetModuleHandleW.Call(0)
 	cfg = loadConfig()
+	applyLangPref(cfg.Lang)
 	initDPI()
 	if cfg.UIScale > 0 {
 		userScale = cfg.UIScale
@@ -300,7 +307,7 @@ func main() {
 	y := (int32(scrH) - h) / 2
 
 	hwndMain, _, _ = proc.CreateWindowExW.Call(
-		0x00040000, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(utf16ptr("端口转发"))),
+		0x00040000, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(utf16ptr(T("app.title")))),
 		0x80000000, // WS_POPUP：不要系统边框，标题栏自己画
 		uintptr(x), uintptr(y), uintptr(w), uintptr(h),
 		0, 0, hInst, 0)
@@ -366,7 +373,7 @@ func addTray() {
 	nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
 	nid.UCallbackMessage = trayMsg
 	nid.HIcon = hIconTray
-	copy(nid.SzTip[:], syscall.StringToUTF16("端口转发"))
+	copy(nid.SzTip[:], syscall.StringToUTF16(T("app.title")))
 	r, _, _ := gproc.ShellNotifyIcon.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
 	logf("tray NIM_ADD ok=%d cbSize=%d", r, nid.CbSize)
 }
@@ -407,12 +414,12 @@ func darkTitle(hwnd uintptr) {
 
 func showTrayMenu() {
 	hm, _, _ := proc.CreatePopupMenu.Call()
-	proc.AppendMenuW.Call(hm, MF_STRING, trayOpen, uintptr(unsafe.Pointer(utf16ptr("打开面板"))))
+	proc.AppendMenuW.Call(hm, MF_STRING, trayOpen, uintptr(unsafe.Pointer(utf16ptr(T("tray.open")))))
 	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
-	proc.AppendMenuW.Call(hm, MF_STRING, trayStartAll, uintptr(unsafe.Pointer(utf16ptr("全部启动"))))
-	proc.AppendMenuW.Call(hm, MF_STRING, trayStopAll, uintptr(unsafe.Pointer(utf16ptr("全部停止"))))
+	proc.AppendMenuW.Call(hm, MF_STRING, trayStartAll, uintptr(unsafe.Pointer(utf16ptr(T("tray.startall")))))
+	proc.AppendMenuW.Call(hm, MF_STRING, trayStopAll, uintptr(unsafe.Pointer(utf16ptr(T("tray.stopall")))))
 	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
-	proc.AppendMenuW.Call(hm, MF_STRING, trayOpenLog, uintptr(unsafe.Pointer(utf16ptr("打开日志"))))
+	proc.AppendMenuW.Call(hm, MF_STRING, trayOpenLog, uintptr(unsafe.Pointer(utf16ptr(T("tray.openlog")))))
 
 	scaleMenu, _, _ := proc.CreatePopupMenu.Call()
 	cur := int(userScale*100 + 0.5)
@@ -422,16 +429,34 @@ func showTrayMenu() {
 			flags |= MF_CHECKED
 		}
 		proc.AppendMenuW.Call(scaleMenu, flags, uintptr(trayScaleBase+pct),
-			uintptr(unsafe.Pointer(utf16ptr(fmt.Sprintf("界面缩放 %d%%", pct)))))
+			uintptr(unsafe.Pointer(utf16ptr(T("tray.scaleitem", pct)))))
 	}
-	proc.AppendMenuW.Call(hm, MF_POPUP, scaleMenu, uintptr(unsafe.Pointer(utf16ptr("界面缩放"))))
+	proc.AppendMenuW.Call(hm, MF_POPUP, scaleMenu, uintptr(unsafe.Pointer(utf16ptr(T("tray.scalemenu")))))
+
+	langMenu, _, _ := proc.CreatePopupMenu.Call()
+	for _, opt := range []struct {
+		id    int
+		code  string
+		label string
+	}{
+		{trayLangAuto, "", T("lang.auto")},
+		{trayLangZh, "zh", "中文"},
+		{trayLangEn, "en", "English"},
+	} {
+		flags := uintptr(MF_STRING)
+		if cfg.Lang == opt.code {
+			flags |= MF_CHECKED
+		}
+		proc.AppendMenuW.Call(langMenu, flags, uintptr(opt.id), uintptr(unsafe.Pointer(utf16ptr(opt.label))))
+	}
+	proc.AppendMenuW.Call(hm, MF_POPUP, langMenu, uintptr(unsafe.Pointer(utf16ptr(T("tray.lang")))))
 	if serviceInstalled() {
-		proc.AppendMenuW.Call(hm, MF_STRING, trayUninstallSvc, uintptr(unsafe.Pointer(utf16ptr("卸载后台服务"))))
+		proc.AppendMenuW.Call(hm, MF_STRING, trayUninstallSvc, uintptr(unsafe.Pointer(utf16ptr(T("tray.uninstall")))))
 	} else {
-		proc.AppendMenuW.Call(hm, MF_STRING, trayInstallSvc, uintptr(unsafe.Pointer(utf16ptr("安装为后台服务"))))
+		proc.AppendMenuW.Call(hm, MF_STRING, trayInstallSvc, uintptr(unsafe.Pointer(utf16ptr(T("tray.install")))))
 	}
 	proc.AppendMenuW.Call(hm, MF_SEPARATOR, 0, 0)
-	proc.AppendMenuW.Call(hm, MF_STRING, trayExit, uintptr(unsafe.Pointer(utf16ptr("退出"))))
+	proc.AppendMenuW.Call(hm, MF_STRING, trayExit, uintptr(unsafe.Pointer(utf16ptr(T("tray.exit")))))
 
 	var pt POINT
 	proc.GetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
@@ -441,6 +466,17 @@ func showTrayMenu() {
 	proc.PostMessageW.Call(hwndMain, WM_NULL, 0, 0)
 	proc.DestroyMenu.Call(hm)
 
+	switch int(cmd) {
+	case trayLangAuto:
+		applyLang("")
+		return
+	case trayLangZh:
+		applyLang("zh")
+		return
+	case trayLangEn:
+		applyLang("en")
+		return
+	}
 	if c := int(cmd); c > trayScaleBase && c < trayScaleBase+1000 {
 		applyUserScale(float64(c-trayScaleBase) / 100.0)
 		return
@@ -460,19 +496,19 @@ func showTrayMenu() {
 			0, 0, 1)
 	case trayInstallSvc:
 		if err := installService(); err != nil {
-			msgBox("安装服务失败：\n"+err.Error()+"\n\n请以管理员身份运行本程序。", "PortFwd")
+			msgBox(T("svc.install.fail", err.Error()), "PortFwd")
 		} else {
 			svcManaged = true
 			eng.StopAll(cfg.Items)
-			msgBox("已安装为开机自启服务，转发交由服务执行。\n配置：%ProgramData%\\PortFwd\\config.json", "PortFwd")
+			msgBox(T("svc.install.ok"), "PortFwd")
 		}
 		proc.InvalidateRect.Call(hwndMain, 0, 0)
 	case trayUninstallSvc:
 		if err := uninstallService(); err != nil {
-			msgBox("卸载服务失败：\n"+err.Error(), "PortFwd")
+			msgBox(T("svc.uninstall.fail", err.Error()), "PortFwd")
 		} else {
 			svcManaged = false
-			msgBox("后台服务已卸载，恢复由面板直接转发。", "PortFwd")
+			msgBox(T("svc.uninstall.ok"), "PortFwd")
 		}
 		proc.InvalidateRect.Call(hwndMain, 0, 0)
 	case trayExit:
@@ -515,6 +551,31 @@ func forceForeground(hwnd uintptr) {
 func mustForeground() uintptr {
 	h, _, _ := proc.GetForegroundWindow.Call()
 	return h
+}
+
+// applyLang 切换界面语言并落盘（code 为空 = 跟随系统）
+func applyLang(code string) {
+	cfg.Lang = code
+	applyLangPref(code)
+	_ = saveConfig(&cfg)
+
+	proc.SetWindowTextW.Call(hwndMain, uintptr(unsafe.Pointer(utf16ptr(T("app.title")))))
+	if hwndLog != 0 {
+		proc.SetWindowTextW.Call(hwndLog, uintptr(unsafe.Pointer(utf16ptr(T("log.title")))))
+	}
+	var nid NOTIFYICONDATA
+	nid.CbSize = uint32(unsafe.Sizeof(nid))
+	nid.Hwnd = hwndMain
+	nid.UID = 1
+	nid.UFlags = NIF_TIP
+	copy(nid.SzTip[:], syscall.StringToUTF16(T("app.title")))
+	gproc.ShellNotifyIcon.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&nid)))
+
+	proc.InvalidateRect.Call(hwndMain, 0, 1)
+	if hwndLog != 0 {
+		proc.InvalidateRect.Call(hwndLog, 0, 1)
+	}
+	logf("language -> %q (en=%v)", code, langEN)
 }
 
 // applyUserScale 调整界面缩放：窗口按新比例重建大小并保持居中，配置写入 ui_scale
@@ -692,7 +753,7 @@ func paintMain(hdc uintptr, prc RECT) {
 	const titleH = int32(60)
 
 	// —— 自绘标题栏 ——
-	g.text("端口转发", RECT{pad, 2, rc.Right - 200, titleH - 6}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
+	g.text(T("app.title"), RECT{pad, 2, rc.Right - 200, titleH - 6}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	closeR := RECT{rc.Right - 62, 12, rc.Right - 18, 48}
 	minR := RECT{rc.Right - 116, 12, rc.Right - 72, 48}
 	if t := animOf(idClose); t > 0 {
@@ -706,19 +767,19 @@ func paintMain(hdc uintptr, prc RECT) {
 	hitsMain = append(hitsMain, hitBox{id: idClose, rect: closeR}, hitBox{id: idMin, rect: minR})
 
 	// —— 工具行 ——
-	g.text("本地端口 → 目标服务 · 右键托盘图标可再次打开",
+	g.text(T("subtitle"),
 		RECT{pad, titleH - 2, rc.Right - 520, titleH + 34}, cSub, fSmall, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
 	bw, bh := int32(110), int32(42)
 	bx := rc.Right - pad - bw
 	by := titleH + 3
-	btn(g, RECT{bx, by, bx + bw, by + bh}, "＋ 新增", idNew, cAccent, cBlack)
+	btn(g, RECT{bx, by, bx + bw, by + bh}, T("btn.new"), idNew, cAccent, cBlack)
 	bx -= bw + 10
-	btn(g, RECT{bx, by, bx + bw, by + bh}, "导入", idImport, cBtn, cText)
+	btn(g, RECT{bx, by, bx + bw, by + bh}, T("btn.import"), idImport, cBtn, cText)
 	bx -= bw + 10
-	btn(g, RECT{bx, by, bx + bw, by + bh}, "导出", idExport, cBtn, cText)
+	btn(g, RECT{bx, by, bx + bw, by + bh}, T("btn.export"), idExport, cBtn, cText)
 	bx -= bw + 10
-	btn(g, RECT{bx, by, bx + bw, by + bh}, "日志", idLog, cBtn, cText)
+	btn(g, RECT{bx, by, bx + bw, by + bh}, T("btn.log"), idLog, cBtn, cText)
 
 	g.fill(RECT{0, 126, rc.Right, 127}, cLine)
 
@@ -739,7 +800,7 @@ func paintMain(hdc uintptr, prc RECT) {
 	rowH := int32(88)
 
 	if len(items) == 0 {
-		g.text("还没有转发规则，点右上角「＋ 新增」加一条",
+		g.text(T("empty.rules"),
 			RECT{pad, top + 24, rc.Right - pad, top + 64}, cSub, fBody, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	}
 
@@ -759,27 +820,27 @@ func paintMain(hdc uintptr, prc RECT) {
 
 		name := it.Name
 		if name == "" {
-			name = "未命名"
+			name = T("name.blank")
 		}
 		g.text(name, RECT{r.Left + 24, r.Top + 8, togR.Left - 150, r.Top + 48}, cText, fH1,
 			DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS)
-		mapText := it.Target() + "   →   本机 " + strconv.Itoa(it.LocalPort)
+		mapText := it.Target() + T("map.arrow") + T("map.local") + strconv.Itoa(it.LocalPort)
 		if running {
 			if n := eng.Conns(it.ID); n > 0 {
-				mapText += fmt.Sprintf("   ·   %d 连接", n)
+				mapText += T("conn.count", n)
 			}
 		}
 		g.text(mapText, RECT{r.Left + 24, r.Top + 48, togR.Left - 150, r.Top + 82}, cSub, fNum,
 			DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS)
 
 		dotC := cIdle
-		statusText := "已停止"
+		statusText := T("st.stopped")
 		if svcManaged && it.Enabled {
-			dotC, statusText = cRun, "服务托管"
+			dotC, statusText = cRun, T("st.managed")
 		} else if running {
-			dotC, statusText = cRun, "运行中"
+			dotC, statusText = cRun, T("st.running")
 		} else if e := eng.Err(it.ID); e != "" {
-			dotC, statusText = cDanger, "失败"
+			dotC, statusText = cDanger, T("st.failed")
 		}
 		stRight := togR.Left - 16
 		stLeft := stRight - 108
@@ -788,12 +849,12 @@ func paintMain(hdc uintptr, prc RECT) {
 			DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
 		if running {
-			btn(g, togR, "停止", baseToggle+scrollTop+i, cBtn, cSub)
+			btn(g, togR, T("btn.stop"), baseToggle+scrollTop+i, cBtn, cSub)
 		} else {
-			btn(g, togR, "启动", baseToggle+scrollTop+i, cAccent, cBlack)
+			btn(g, togR, T("btn.start"), baseToggle+scrollTop+i, cAccent, cBlack)
 		}
-		btn(g, editR, "编辑", baseEdit+scrollTop+i, cBtn, cText)
-		btn(g, delR, "删除", baseDelete+scrollTop+i, cBtn, cDanger)
+		btn(g, editR, T("btn.edit"), baseEdit+scrollTop+i, cBtn, cText)
+		btn(g, delR, T("btn.delete"), baseDelete+scrollTop+i, cBtn, cDanger)
 	}
 
 	runCount := 0
@@ -804,10 +865,10 @@ func paintMain(hdc uintptr, prc RECT) {
 	}
 	fy := rc.Bottom - 52
 	g.fill(RECT{0, fy - 14, rc.Right, fy - 13}, cLine)
-	g.text(fmt.Sprintf("共 %d 条 · 运行中 %d 条", len(items), runCount),
+	g.text(T("footer.count", len(items), runCount),
 		RECT{pad, fy - 6, rc.Right - pad, fy + 34}, cSub, fBody, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	if len(items) > maxRows {
-		g.text(fmt.Sprintf("滚轮翻页 %d/%d", scrollTop+1, len(items)-maxRows+1),
+		g.text(T("footer.page", scrollTop+1, len(items)-maxRows+1),
 			RECT{pad, fy - 6, rc.Right - pad, fy + 34}, cSub, fBody, DT_RIGHT|DT_VCENTER|DT_SINGLELINE)
 	}
 	for _, it := range items {
@@ -897,7 +958,7 @@ func toggleItem(idx int) {
 	proc.InvalidateRect.Call(hwndMain, 0, 0)
 	if startErr != nil {
 		proc.InvalidateRect.Call(hwndMain, 0, 0)
-		msgBox(fmt.Sprintf("启动失败：%s\n\n本地端口 %d 起不来。通常是这个端口已被别的程序占用（比如旧的转发任务），\n或者需要管理员权限。", startErr.Error(), localPort), "PortFwd · "+name)
+		msgBox(T("err.start", startErr.Error(), localPort), "PortFwd · "+name)
 	}
 }
 
@@ -939,8 +1000,8 @@ func stopAll() {
 // ---------- 导入导出 ----------
 
 func doExport() {
-	path, ok := fileDialog(true, "导出转发配置", "portfwd-config.json",
-		"JSON 配置 (*.json)\x00*.json\x00所有文件 (*.*)\x00*.*\x00\x00")
+	path, ok := fileDialog(true, T("export.title"), "portfwd-config.json",
+		T("file.filter"))
 	if !ok {
 		return
 	}
@@ -948,26 +1009,26 @@ func doExport() {
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	cfgMu.Unlock()
 	if err := os.WriteFile(path, b, 0644); err != nil {
-		msgBox("导出失败："+err.Error(), "端口转发")
+		msgBox(T("err.export")+err.Error(), T("app.title"))
 		return
 	}
-	msgBox("已导出到\n"+path, "端口转发")
+	msgBox(T("ok.export")+path, T("app.title"))
 }
 
 func doImport() {
-	path, ok := fileDialog(false, "导入转发配置", "",
-		"JSON 配置 (*.json)\x00*.json\x00所有文件 (*.*)\x00*.*\x00\x00")
+	path, ok := fileDialog(false, T("import.title"), "",
+		T("file.filter"))
 	if !ok {
 		return
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		msgBox("读取失败："+err.Error(), "端口转发")
+		msgBox(T("err.read")+err.Error(), T("app.title"))
 		return
 	}
 	var nc Config
 	if err := json.Unmarshal(stripBOM(b), &nc); err != nil {
-		msgBox("不是有效的配置文件：\n"+err.Error(), "端口转发")
+		msgBox(T("err.badconfig")+err.Error(), T("app.title"))
 		return
 	}
 	eng.StopAll(cfg.Items)
@@ -1047,11 +1108,11 @@ func openDlg(idx int) {
 		proc.RegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 		dlgClsRegistered = true
 	}
-	title := "新增转发"
+	title := T("dlg.new")
 	if dlgEditing >= 0 {
-		title = "编辑转发"
+		title = T("dlg.edit")
 	}
-	x, y := int32(280), int32(150)
+	x, y := iscale(280), iscale(150)
 	w, h := iscale(620), iscale(510)
 	hwndDlg, _, _ = proc.CreateWindowExW.Call(
 		0x00040000, uintptr(unsafe.Pointer(utf16ptr("PortFwdDlg"))), uintptr(unsafe.Pointer(utf16ptr(title))),
@@ -1135,13 +1196,13 @@ func buildDlg(hwnd uintptr) {
 		proc.SendMessageW.Call(e, 0x0030, newFont(int32(18*pf), false), 0)
 		return e
 	}
-	mkLabel("名称（留空则用 地址:端口）", 72)
+	mkLabel(T("lbl.name"), 72)
 	dlgEdits[0] = mkEdit(98, it.Name)
-	mkLabel("目标地址（IP 或域名）", 154)
+	mkLabel(T("lbl.host"), 154)
 	dlgEdits[1] = mkEdit(180, it.TargetHost)
-	mkLabel("目标端口", 236)
+	mkLabel(T("lbl.tport"), 236)
 	dlgEdits[2] = mkEdit(262, portText(it.TargetPort))
-	mkLabel("本地端口（对外提供服务的端口）", 318)
+	mkLabel(T("lbl.lport"), 318)
 	dlgEdits[3] = mkEdit(344, portText(it.LocalPort))
 	proc.SetFocus.Call(dlgEdits[1])
 }
@@ -1161,9 +1222,9 @@ func paintDlg(hdc uintptr, prc RECT) {
 	hitsDlg = hitsDlg[:0]
 	hitSink = &hitsDlg
 
-	title := "新增转发"
+	title := T("dlg.new")
 	if dlgEditing >= 0 {
-		title = "编辑转发"
+		title = T("dlg.edit")
 	}
 	g.text(title, RECT{30, 2, rc.Right - 80, 56}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	closeR := RECT{rc.Right - 58, 12, rc.Right - 18, 48}
@@ -1177,9 +1238,9 @@ func paintDlg(hdc uintptr, prc RECT) {
 	by := rc.Bottom - 62
 	cancel := RECT{rc.Right - 30 - bw, by, rc.Right - 30, by + bh}
 	save := RECT{cancel.Left - 14 - bw, by, cancel.Left - 14, by + bh}
-	btn(g, save, "保存", idSave, cAccent, cBlack)
-	btn(g, cancel, "取消", idCancel, cBtn, cText)
-	g.text("保存后自动启动", RECT{30, by, save.Left - 14, by + bh}, cSub, fSmall,
+	btn(g, save, T("btn.save"), idSave, cAccent, cBlack)
+	btn(g, cancel, T("btn.cancel"), idCancel, cBtn, cText)
+	g.text(T("hint.save"), RECT{30, by, save.Left - 14, by + bh}, cSub, fSmall,
 		DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 
 	blitGfxDC(hdc, prc, mdc, bmp, old)
@@ -1211,15 +1272,15 @@ func saveDlg() {
 	tp, e1 := strconv.Atoi(editText(dlgEdits[2]))
 	lp, e2 := strconv.Atoi(editText(dlgEdits[3]))
 	if host == "" {
-		msgBox("目标地址不能为空", "提示")
+		msgBox(T("err.host"), T("note.title"))
 		return
 	}
 	if e1 != nil || tp < 1 || tp > 65535 {
-		msgBox("目标端口必须是 1-65535", "提示")
+		msgBox(T("dlg.err.tport"), T("note.title"))
 		return
 	}
 	if e2 != nil || lp < 1 || lp > 65535 {
-		msgBox("本地端口必须是 1-65535", "提示")
+		msgBox(T("dlg.err.lport"), T("note.title"))
 		return
 	}
 	cfgMu.Lock()
@@ -1227,7 +1288,7 @@ func saveDlg() {
 		if it.LocalPort == lp && i != dlgEditing {
 			n := it.Name
 			cfgMu.Unlock()
-			msgBox(fmt.Sprintf("本地端口 %d 已被「%s」占用", lp, n), "提示")
+			msgBox(T("dlg.err.inuse", lp, n), T("note.title"))
 			return
 		}
 	}
