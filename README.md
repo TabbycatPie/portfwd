@@ -9,11 +9,13 @@ A tiny Windows tray app for **TCP port forwarding**. It exposes a service that i
 ## Features
 
 - **Single 2.5 MB exe**, no installer, no runtime, no third-party Go modules. Pure Go + Win32.
-- **Lives in the tray** — right-click for *Open panel / Start all / Stop all / Quit*, double-click to open the panel.
+- **Lives in the tray** — right-click for *Open panel / Start all / Stop all / Open log / UI scale / Install as service / Quit*. Click or double-click opens the panel and forces it to the foreground.
 - **Editable rules** — add, edit, start/stop, delete. Each rule remembers its last state across restarts.
 - **Connection log** — see who connected: time, rule, source `IP:port`, target, bytes transferred, duration or failure reason. Keeps the latest 300 entries in memory; one-click clear.
 - **Import / export** rules as JSON.
-- **Dark, borderless UI** drawn by hand (no GTK/Qt/Electron), rounded corners, custom title bar.
+- **Dark, borderless UI** drawn by hand (no GTK/Qt/Electron), rounded corners, custom title bar, 150 ms hover fades.
+- **High-DPI aware** — Per-Monitor DPI V2, so text renders natively at 150% instead of being bitmap-stretched; an extra 90%-150% UI scale is available from the tray.
+- **Optional Windows service** — `--install` keeps forwarding alive without a logged-in session; the panel then only edits rules.
 - **Zero telemetry** — it never makes an outbound request. Rules live in `%APPDATA%\PortFwd\config.json`.
 
 ![connection log](docs/screenshot-log.png)
@@ -59,6 +61,9 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
 | Flag | Purpose |
 |---|---|
 | `--tray` / `--startup` | Start hidden in the tray (use this for autostart) |
+| `--service` | Called by the service control manager |
+| `--install` | Register + start as an auto-start service (admin) |
+| `--uninstall` | Stop + delete the service (admin) |
 | `--check` | Headless self-check: start all rules, write the result to `%TEMP%\portfwd-check.txt` |
 | `--dump` | Dump the current config to `%TEMP%\portfwd-dump.json` |
 | `--selftest` | Start a throwaway forward, make one real connection, dump the event |
@@ -74,6 +79,10 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
 | `engine.go` | Forwards engine + connection events |
 | `config.go` | Config struct and JSON I/O |
 | `logwin.go` | Connection log window |
+| `dpi.go` | High-DPI: DPI detection, logical→physical mapping |
+| `anim.go` | Hover transition animation |
+| `service.go` | Windows service mode (install / remove / run) |
+| `log.go` | Persistent log with rotation |
 | `shot.go` | Off-screen rendering and self-tests |
 | `tools/icongen` | Multi-size ICO generator (stdlib only) |
 | `tools/bmp2png` | BMP → PNG converter used for the screenshots |
