@@ -212,6 +212,9 @@ Rotation: the file is renamed to `portfwd.log.1` once it exceeds **2 MB** (one b
 The app is **Per-Monitor DPI V2** aware: the UI is laid out in logical units and scaled to physical
 pixels using the monitor's DPI, so text is rendered natively instead of being bitmap-stretched by Windows.
 
+Buttons, list cards and the title-bar close glyph fade their background over ~150 ms when hovered
+(and fade back on `WM_MOUSELEAVE`), instead of snapping.
+
 Tray right-click → **界面缩放 (UI scale)** offers `90% / 100% / 115% / 130% / 150%` on top of the system
 DPI. It is persisted as `ui_scale` in the config file:
 
