@@ -190,6 +190,23 @@ i.e. `C:\Users\<you>\AppData\Roaming\PortFwd\config.json`. Delete it to reset.
 
 ---
 
+## 7b. Logs (for troubleshooting)
+
+```
+%APPDATA%\PortFwd\portfwd.log
+```
+
+Tray right-click → **Open log** opens it directly. Appended on every run: startup args, loaded rules, tray registration result, each forward start/stop/failure, and every connection (source, target, bytes, duration).
+
+```
+[conn] open rule="Admin console" from=192.168.1.23:52114 to=10.0.0.10:8080
+[conn] close from=192.168.1.23:52114 to=10.0.0.10:8080 bytes=18432 dur=1.2s
+```
+
+Rotation: the file is renamed to `portfwd.log.1` once it exceeds **2 MB** (one backup kept).
+
+> The log contains real internal IPs and ports — sanitise it before sharing.
+
 ## 8. Command line
 
 | Flag | Purpose |
