@@ -72,9 +72,19 @@ func wndLogProc(hwnd, msg, wp, lp uintptr) uintptr {
 		proc.EndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		return 0
 	case WM_MOUSEMOVE:
-		id := hitTest(hitsLog, loword(lp), hiword(lp))
+		trackMouseLeave(hwnd)
+		lx, ly := toLogical(loword(lp), hiword(lp))
+		id := hitTest(hitsLog, lx, ly)
 		if id != hoverID {
 			hoverID = id
+			startHoverAnim(hwndMain)
+			proc.InvalidateRect.Call(hwnd, 0, 0)
+		}
+		return 0
+	case WM_MOUSELEAVE:
+		if hoverID != 0 {
+			hoverID = 0
+			startHoverAnim(hwndMain)
 			proc.InvalidateRect.Call(hwnd, 0, 0)
 		}
 		return 0
@@ -142,8 +152,8 @@ func paintLog(hdc uintptr, prc RECT) {
 	// 标题栏
 	g.text("连接记录", RECT{28, 2, rc.Right - 80, 50}, cText, fTitle, DT_LEFT|DT_VCENTER|DT_SINGLELINE)
 	closeR := RECT{rc.Right - 58, 11, rc.Right - 18, 43}
-	if hoverID == idLogClose {
-		g.round(closeR, 8, cBtnHov)
+	if t := animOf(idLogClose); t > 0 {
+		g.round(closeR, 8, lerpColor(cBg, cBtnHov, t))
 	}
 	g.text("×", closeR, cText, fTitle, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	hitsLog = append(hitsLog, hitBox{id: idLogClose, rect: closeR})
