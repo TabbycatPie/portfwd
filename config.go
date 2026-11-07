@@ -31,13 +31,21 @@ func configPath() string {
 	return filepath.Join(d, "config.json")
 }
 
+// stripBOM 去掉 UTF-8 BOM：记事本另存为「UTF-8」会带 BOM，直接 Unmarshal 会失败
+func stripBOM(b []byte) []byte {
+	if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		return b[3:]
+	}
+	return b
+}
+
 func loadConfig() Config {
 	var c Config
 	b, err := os.ReadFile(configPath())
 	if err != nil {
 		return Config{}
 	}
-	_ = json.Unmarshal(b, &c)
+	_ = json.Unmarshal(stripBOM(b), &c)
 	// 补齐 ID
 	need := false
 	for i := range c.Items {
