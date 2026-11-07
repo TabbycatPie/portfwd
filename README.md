@@ -9,6 +9,7 @@ A tiny Windows tray app for **TCP port forwarding**. It exposes a service that i
 ## Features
 
 - **Single 2.5 MB exe**, no installer, no runtime, no third-party Go modules. Pure Go + Win32.
+- **Chinese / English UI** — tray right-click *Language* offers Follow-system / 中文 / English; the choice is saved and reused on the next start (default: follow the system language).
 - **Lives in the tray** — right-click for *Open panel / Start all / Stop all / Open log / UI scale / Install as service / Quit*. Click or double-click opens the panel and forces it to the foreground.
 - **Editable rules** — add, edit, start/stop, delete. Each rule remembers its last state across restarts.
 - **Connection log** — see who connected: time, rule, source `IP:port`, target, bytes transferred, duration or failure reason. Keeps the latest 300 entries in memory; one-click clear.
@@ -80,6 +81,7 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
 | `config.go` | Config struct and JSON I/O |
 | `logwin.go` | Connection log window |
 | `dpi.go` | High-DPI: DPI detection, logical→physical mapping |
+| `lang.go` | String tables (zh/en) and system-language detection |
 | `anim.go` | Hover transition animation |
 | `service.go` | Windows service mode (install / remove / run) |
 | `log.go` | Persistent log with rotation |
