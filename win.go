@@ -27,7 +27,8 @@ var (
 		DrawTextW, SetBkMode, SetTextColor, CreateSolidBrush, CreatePen, SelectObject       *syscall.LazyProc
 		DeleteObject, CreateFontW, Rectangle, Ellipse, RoundRect, GetStockObject            *syscall.LazyProc
 		SetTextAlign, SetWindowPos, FillRect, GetModuleHandleW, ShowCursor                  *syscall.LazyProc
-		ReleaseCapture                                                                      *syscall.LazyProc
+		ReleaseCapture, GetForegroundWindow, AttachThreadInput, BringWindowToTop            *syscall.LazyProc
+		GetWindowThreadProcessId                                                            *syscall.LazyProc
 	}{}
 	gproc = struct {
 		ShellNotifyIcon     *syscall.LazyProc
@@ -37,7 +38,7 @@ var (
 		GetSaveFileNameW    *syscall.LazyProc
 	}{}
 	kproc = struct {
-		CreateMutexW, GetLastError *syscall.LazyProc
+		CreateMutexW, GetLastError, GetCurrentThreadId *syscall.LazyProc
 	}{}
 )
 
@@ -100,6 +101,10 @@ func init() {
 	proc.GetModuleHandleW = k32.NewProc("GetModuleHandleW")
 	proc.ShowCursor = u32.NewProc("ShowCursor")
 	proc.ReleaseCapture = u32.NewProc("ReleaseCapture")
+	proc.GetForegroundWindow = u32.NewProc("GetForegroundWindow")
+	proc.AttachThreadInput = u32.NewProc("AttachThreadInput")
+	proc.BringWindowToTop = u32.NewProc("BringWindowToTop")
+	proc.GetWindowThreadProcessId = u32.NewProc("GetWindowThreadProcessId")
 
 	gproc.ShellNotifyIcon = s32.NewProc("Shell_NotifyIconW")
 	gproc.CreateIconFromResEx = u32.NewProc("CreateIconFromResourceEx")
@@ -109,6 +114,7 @@ func init() {
 
 	kproc.CreateMutexW = k32.NewProc("CreateMutexW")
 	kproc.GetLastError = k32.NewProc("GetLastError")
+	kproc.GetCurrentThreadId = k32.NewProc("GetCurrentThreadId")
 }
 
 const (
@@ -136,6 +142,9 @@ const (
 	SW_HIDE    = 0
 	SW_SHOW    = 5
 	SW_MINIMIZE = 6
+	SWP_NOSIZE     = 0x0001
+	SWP_NOMOVE     = 0x0002
+	SWP_NOACTIVATE = 0x0010
 	SW_RESTORE  = 9
 
 	NIM_ADD    = 0
