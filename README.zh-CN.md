@@ -1,4 +1,8 @@
-# PortFwd
+<p align="center">
+  <img src="docs/logo.png" width="128" alt="PortFwd logo">
+</p>
+
+<h1 align="center">PortFwd</h1>
 
 Windows 托盘版 **TCP 端口转发**小工具。把「只有特定网段能访问的服务」搬到你本机的端口上，同事用 `http://你的IP:端口` 就能打开，不用给他开 VPN。
 
