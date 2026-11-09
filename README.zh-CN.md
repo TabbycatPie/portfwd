@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" width="128" alt="PortFwd logo">
+  <img src="docs/logo-512.png" width="128" alt="PortFwd logo">
 </p>
 
 <h1 align="center">PortFwd</h1>
