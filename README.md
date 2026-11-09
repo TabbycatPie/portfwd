@@ -1,4 +1,8 @@
-# PortFwd
+<p align="center">
+  <img src="docs/logo.png" width="128" alt="PortFwd logo">
+</p>
+
+<h1 align="center">PortFwd</h1>
 
 A tiny Windows tray app for **TCP port forwarding**. It exposes a service that is only reachable from a specific network segment on a port of your own machine, so colleagues can open `http://your-ip:port` without a VPN account.
 
