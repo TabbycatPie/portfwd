@@ -1113,7 +1113,7 @@ func openDlg(idx int) {
 		title = T("dlg.edit")
 	}
 	x, y := iscale(280), iscale(150)
-	w, h := iscale(620), iscale(510)
+	w, h := iscale(620), iscale(448)
 	hwndDlg, _, _ = proc.CreateWindowExW.Call(
 		0x00040000, uintptr(unsafe.Pointer(utf16ptr("PortFwdDlg"))), uintptr(unsafe.Pointer(utf16ptr(title))),
 		0x80000000, uintptr(x), uintptr(y), uintptr(w), uintptr(h),
@@ -1185,26 +1185,31 @@ func buildDlg(hwnd uintptr) {
 		h, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("STATIC"))), uintptr(unsafe.Pointer(utf16ptr(text))),
 			0x50000000, uintptr(iscale(float64(30))), uintptr(iscale(float64(y))),
-			uintptr(iscale(560)), uintptr(iscale(24)), hwnd, 0, hInst, 0)
-		proc.SendMessageW.Call(h, 0x0030, newFont(int32(17*pf), false), 0)
+			uintptr(iscale(560)), uintptr(iscale(20)), hwnd, 0, hInst, 0)
+		proc.SendMessageW.Call(h, 0x0030, newFont(int32(16*pf), false), 0)
 	}
 	mkEdit := func(y int32, text string) uintptr {
 		e, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("EDIT"))), uintptr(unsafe.Pointer(utf16ptr(text))),
 			0x50000000|0x0080, uintptr(iscale(30)), uintptr(iscale(float64(y))),
-			uintptr(iscale(560)), uintptr(iscale(40)), hwnd, 0, hInst, 0)
-		proc.SendMessageW.Call(e, 0x0030, newFont(int32(18*pf), false), 0)
+			uintptr(iscale(560)), uintptr(iscale(34)), hwnd, 0, hInst, 0)
+		proc.SendMessageW.Call(e, 0x0030, newFont(int32(17*pf), false), 0)
+		// EM_SETMARGINS：左右各留 10 逻辑像素，文字不再贴边框
+		m := uint32(iscale(10))
+		proc.SendMessageW.Call(e, 0x00D3, 3, uintptr(m|(m<<16)))
 		return e
 	}
-	mkLabel(T("lbl.name"), 72)
-	dlgEdits[0] = mkEdit(98, it.Name)
-	mkLabel(T("lbl.host"), 154)
-	dlgEdits[1] = mkEdit(180, it.TargetHost)
-	mkLabel(T("lbl.tport"), 236)
-	dlgEdits[2] = mkEdit(262, portText(it.TargetPort))
-	mkLabel(T("lbl.lport"), 318)
-	dlgEdits[3] = mkEdit(344, portText(it.LocalPort))
+	mkLabel(T("lbl.name"), 64)
+	dlgEdits[0] = mkEdit(86, it.Name)
+	mkLabel(T("lbl.host"), 134)
+	dlgEdits[1] = mkEdit(156, it.TargetHost)
+	mkLabel(T("lbl.tport"), 204)
+	dlgEdits[2] = mkEdit(226, portText(it.TargetPort))
+	mkLabel(T("lbl.lport"), 274)
+	dlgEdits[3] = mkEdit(296, portText(it.LocalPort))
 	proc.SetFocus.Call(dlgEdits[1])
+	// 光标放到已有内容末尾，编辑时不用先按 End
+	proc.SendMessageW.Call(dlgEdits[1], 0x00B1, uintptr(0xFFFFFFFF), uintptr(0xFFFFFFFF))
 }
 
 func portText(p int) string {
