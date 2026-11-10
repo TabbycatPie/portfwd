@@ -176,6 +176,9 @@ func makeIcon(imgs []icoImg, want int) uintptr {
 
 // ---------- 入口 ----------
 
+// 编辑对话框四个字段的纵向起点（逻辑像素），绘制与建控件共用，避免错位
+var dlgFieldY = []int32{56, 134, 212, 290}
+
 var (
 	startHidden bool
 	svcManaged  bool // 服务在跑，面板只编辑不监听
@@ -1184,29 +1187,29 @@ func buildDlg(hwnd uintptr) {
 	mkLabel := func(text string, y int32) {
 		h, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("STATIC"))), uintptr(unsafe.Pointer(utf16ptr(text))),
-			0x50000000, uintptr(iscale(float64(30))), uintptr(iscale(float64(y))),
+			0x50000000, uintptr(iscale(30)), uintptr(iscale(float64(y))),
 			uintptr(iscale(560)), uintptr(iscale(20)), hwnd, 0, hInst, 0)
 		proc.SendMessageW.Call(h, 0x0030, newFont(int32(16*pf), false), 0)
 	}
-	mkEdit := func(y int32, text string) uintptr {
+	// 输入框本体内缩在圆角底槽里（槽由 paintDlg 画），文字用 EM_SETMARGINS 再内推一点
+	mkEdit := func(i int, text string) uintptr {
 		e, _, _ := proc.CreateWindowExW.Call(
 			0, uintptr(unsafe.Pointer(utf16ptr("EDIT"))), uintptr(unsafe.Pointer(utf16ptr(text))),
-			0x50000000|0x0080, uintptr(iscale(30)), uintptr(iscale(float64(y))),
-			uintptr(iscale(560)), uintptr(iscale(34)), hwnd, 0, hInst, 0)
+			0x50000000|0x0080, uintptr(iscale(42)), uintptr(iscale(float64(dlgFieldY[i]+40))),
+			uintptr(iscale(536)), uintptr(iscale(30)), hwnd, 0, hInst, 0)
 		proc.SendMessageW.Call(e, 0x0030, newFont(int32(17*pf), false), 0)
-		// EM_SETMARGINS：左右各留 10 逻辑像素，文字不再贴边框
-		m := uint32(iscale(10))
+		m := uint32(iscale(4))
 		proc.SendMessageW.Call(e, 0x00D3, 3, uintptr(m|(m<<16)))
 		return e
 	}
-	mkLabel(T("lbl.name"), 64)
-	dlgEdits[0] = mkEdit(86, it.Name)
-	mkLabel(T("lbl.host"), 134)
-	dlgEdits[1] = mkEdit(156, it.TargetHost)
-	mkLabel(T("lbl.tport"), 204)
-	dlgEdits[2] = mkEdit(226, portText(it.TargetPort))
-	mkLabel(T("lbl.lport"), 274)
-	dlgEdits[3] = mkEdit(296, portText(it.LocalPort))
+	mkLabel(T("lbl.name"), dlgFieldY[0])
+	dlgEdits[0] = mkEdit(0, it.Name)
+	mkLabel(T("lbl.host"), dlgFieldY[1])
+	dlgEdits[1] = mkEdit(1, it.TargetHost)
+	mkLabel(T("lbl.tport"), dlgFieldY[2])
+	dlgEdits[2] = mkEdit(2, portText(it.TargetPort))
+	mkLabel(T("lbl.lport"), dlgFieldY[3])
+	dlgEdits[3] = mkEdit(3, portText(it.LocalPort))
 	proc.SetFocus.Call(dlgEdits[1])
 	// 光标放到已有内容末尾，编辑时不用先按 End
 	proc.SendMessageW.Call(dlgEdits[1], 0x00B1, uintptr(0xFFFFFFFF), uintptr(0xFFFFFFFF))
@@ -1238,6 +1241,11 @@ func paintDlg(hdc uintptr, prc RECT) {
 	}
 	g.text("×", closeR, cText, fTitle, DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 	hitsDlg = append(hitsDlg, hitBox{id: idDlgClose, rect: closeR})
+
+	// 输入框圆角底槽（EDIT 内缩在其上，同色，视觉即为圆角输入框）
+	for i := range dlgFieldY {
+		g.round(RECT{30, dlgFieldY[i] + 26, rc.Right - 30, dlgFieldY[i] + 72}, 12, cCard)
+	}
 
 	bw, bh := int32(118), int32(44)
 	by := rc.Bottom - 62
